@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: config-service
+
+  cloud:
+    config.server.git:
+      uri: ${GITHUB_URI}
+      username: ${GITHUB_USERNAME}
+      password: ${GITHUB_CONFIG_PASSWORD}
+      default-label: master
+
+server.port: 8888
