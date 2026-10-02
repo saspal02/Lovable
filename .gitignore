@@ -34,5 +34,9 @@ build/
 
 ### env files ###
 .env
+k8s/.env
+k8s/**/secrets.yaml
+k8s/**/secrets.*.yaml
+!k8s/**/secrets.TEMPLATE.yaml
 
 skills-lock.json

@@ -64,7 +64,7 @@ public class GatewayJwtAuthFilter implements GlobalFilter, Ordered {
 
     private Mono<Void> sendErrorResponse(ServerWebExchange exchange, HttpStatus status, String message) {
         exchange.getResponse().setStatusCode(status);
-        exchange.getResponse().getHeaders().add("Content-type", "application/json");
+        exchange.getResponse().getHeaders().add("Content-Type", "application/json");
 
         ApiError apiError = new ApiError(status, message);
 

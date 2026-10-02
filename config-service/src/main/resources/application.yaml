@@ -4,9 +4,34 @@ spring:
 
   cloud:
     config.server.git:
-      uri: ${GITHUB_URI}
+      uri: ${GITHUB_URI:https://github.com/saspal02/lovable-config-server}
       username: ${GITHUB_USERNAME}
       password: ${GITHUB_CONFIG_PASSWORD}
-      default-label: master
+      default-label: main
 
 server.port: 8888
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  health:
+    config:
+      enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: k8s
+
+  cloud:
+    discovery:
+      enabled: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false

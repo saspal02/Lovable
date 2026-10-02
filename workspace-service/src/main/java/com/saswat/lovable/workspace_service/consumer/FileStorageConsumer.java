@@ -7,7 +7,6 @@ import com.saswat.lovable.workspace_service.repository.ProcessedEventRepository;
 import com.saswat.lovable.workspace_service.service.ProjectFileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cglib.core.Local;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;

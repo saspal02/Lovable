@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lovable-frontend
+  namespace: lovable-core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lovable-frontend
+  template:
+    metadata:
+      labels:
+        app: lovable-frontend
+    spec:
+      containers:
+        - name: lovable-frontend
+          image: docker.io/saspal02/lovable-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lovable-frontend
+  namespace: lovable-core
+spec:
+  type: ClusterIP
+  selector:
+    app: lovable-frontend
+  ports:
+    - port: 80
+      targetPort: 80

@@ -1,0 +1,54 @@
+# k8s/services/discovery-service.yaml
+# NEW - the tutorial has no discovery-service manifest (gap in 427e3a44).
+# Modeled on the tutorial's config-service manifest style. Eureka standalone
+# server (:8761, register/fetch disabled - see discovery-service application.yaml);
+# no config-server dependency, so no CONFIG_SERVER_URL / retry env needed.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-service
+  namespace: lovable-core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery-service
+  template:
+    metadata:
+      labels:
+        app: discovery-service
+    spec:
+      containers:
+        - name: discovery-service
+          image: docker.io/saspal02/lovable-discovery-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8761
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: 250m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-service
+  namespace: lovable-core
+spec:
+  selector:
+    app: discovery-service
+  ports:
+    - port: 8761
+      targetPort: 8761

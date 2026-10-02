@@ -1,7 +1,3 @@
-# k8s/infra/namespaces.yaml
-# Ported from tutorial 427e3a44 (Part - 6, Deployed to GKE).
-# Domains adapted: codingshuttle.in -> lovable.in (swap for a real domain on deploy day).
-
 apiVersion: v1
 kind: Namespace
 metadata:

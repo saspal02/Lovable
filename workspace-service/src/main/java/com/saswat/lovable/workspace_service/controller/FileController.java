@@ -20,10 +20,10 @@ public class FileController {
     }
 
     @GetMapping("/content")
-    public ResponseEntity<String> getFile(
+    public ResponseEntity<FileContentResponse> getFile(
             @PathVariable Long projectId,
             @RequestParam String path) {
-        return ResponseEntity.ok(projectFileService.getFileContent(projectId, path));
+        return ResponseEntity.ok(new FileContentResponse(path, projectFileService.getFileContent(projectId, path)));
     }
 
 }
