@@ -1,0 +1,30 @@
+# k8s/infra/namespaces.yaml
+# Ported from tutorial 427e3a44 (Part - 6, Deployed to GKE).
+# Domains adapted: codingshuttle.in -> lovable.in (swap for a real domain on deploy day).
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lovable-core
+
+---
+# to create a separate ns for previews
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lovable-previews
+
+---
+# configmap for shared config values across services
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lovable-shared-config
+  namespace: lovable-core
+data:
+  PREVIEW_DOMAIN: "previews.lovable.in"
+  PREVIEW_NAMESPACE: "lovable-previews"
+  PROXY_PORT: "80"
+  FRONTEND_URL: "http://lovable.in"
