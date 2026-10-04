@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Play, Loader2, ExternalLink, RefreshCw, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, PREVIEW_URL_KEY } from "@/lib/api";
+import { PreviewStatus } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 
 import { RuntimeErrorAlert, RuntimeError } from "@/components/RuntimeErrorAlert";
@@ -19,7 +20,79 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
     return localStorage.getItem(PREVIEW_URL_KEY);
   });
   const [isDeploying, setIsDeploying] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [previewStarting, setPreviewStarting] = useState(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
+
+  const stopPolling = () => {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+  };
+
+  useEffect(() => stopPolling, []);
+
+  const pollUntilReady = (id: string, attempt = 0) => {
+    const MAX_ATTEMPTS = 120;
+    stopPolling();
+
+    const check = async () => {
+      try {
+        const res = await api.getPreviewStatus(id);        const status: PreviewStatus = res.status;
+        if (status === "RUNNING") {
+          stopPolling();
+          setPreviewReady(true);
+          setPreviewStarting(false);
+          return;
+        }
+        if (status === "TERMINATED" || status === "FAILED") {
+          stopPolling();
+          setPreviewReady(false);
+          setPreviewStarting(false);
+          setPreviewUrl(null);
+          localStorage.removeItem(PREVIEW_URL_KEY);
+          toast({
+            title: "Preview not running",
+            description: "The preview route expired. Click 'Run Preview' to start it again.",
+          });
+          return;
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("Preview status forbidden")) {
+          stopPolling();
+          setPreviewReady(false);
+          setPreviewStarting(false);
+          return;
+        }
+        // Keep polling through transient backend errors.
+      }
+      if (attempt >= MAX_ATTEMPTS) {
+        stopPolling();
+        setPreviewStarting(false);
+        toast({
+          title: "Preview is taking too long",
+          description: "Still starting after 10 minutes. Try refreshing or redeploying.",
+          variant: "destructive",
+        });
+        return;
+      }
+      attempt += 1;
+      pollTimer.current = setTimeout(check, 5000);
+    };
+
+    setPreviewReady(false);
+    setPreviewStarting(true);
+    void check();
+  };
+
+  useEffect(() => {
+    if (previewUrl) {
+      pollUntilReady(projectId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Store previewUrl in localStorage when it changes
   useEffect(() => {
@@ -35,9 +108,10 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
       const response = await api.deploy(projectId);
       setPreviewUrl(response.previewUrl);
       toast({
-        title: "Deployment successful",
-        description: "Your preview is now ready",
+        title: "Deployment started",
+        description: "Waiting for the preview server to come up",
       });
+      pollUntilReady(projectId);
     } catch (error) {
       toast({
         title: "Deployment failed",
@@ -50,6 +124,9 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
   };
 
   const handleRefresh = () => {
+    if (projectId) {
+      pollUntilReady(projectId);
+    }
     const iframe = document.querySelector("iframe");
     if (iframe) {
       iframe.src = iframe.src;
@@ -113,7 +190,7 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
 
       {/* Preview Area */}
       <div className="flex-1 bg-[#1a1a1a]">
-        {previewUrl ? (
+        {previewUrl && previewReady ? (
           <iframe
             src={previewUrl}
             className="w-full h-full border-0"
@@ -123,11 +200,28 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <div className="w-16 h-16 rounded-xl bg-muted/20 flex items-center justify-center mb-4">
-              <Globe className="w-8 h-8 text-muted-foreground/50" />
+              {previewStarting || isDeploying ? (
+                <Loader2 className="w-8 h-8 text-muted-foreground/50 animate-spin" />
+              ) : (
+                <Globe className="w-8 h-8 text-muted-foreground/50" />
+              )}
             </div>
             <p className="text-sm text-muted-foreground">
-              No preview available yet
+              {previewStarting || isDeploying
+                ? "Starting preview server… this takes a couple of minutes on first boot"
+                : previewUrl
+                  ? previewUrl
+                  : "Click 'Run Preview' to deploy"}
             </p>
+            {previewUrl && !previewReady && !previewStarting && !isDeploying && (
+              <Button
+                onClick={() => pollUntilReady(projectId)}
+                size="sm"
+                className="mt-4 h-7 px-3 text-xs"
+              >
+                Check again
+              </Button>
+            )}
           </div>
         )}
       </div>

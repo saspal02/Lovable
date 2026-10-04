@@ -31,7 +31,7 @@ spec:
                 name: lovable-shared-config
           env:
             - name: REDIS_URL
-              value: "redis://redis-0.redis.lovable-core.svc.cluster.local:6379" 
+              value: "redis://redis-0.redis.lovable-core.svc.cluster.local:6379"
             - name: PORT
               value: "80"
 ---

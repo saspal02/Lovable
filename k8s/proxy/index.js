@@ -56,8 +56,8 @@ const server = http.createServer(async (req, res) => {
     proxy.web(req, res, { target }, (e) => {
         console.error(`Proxy Error (Web): ${hostname} -> ${e.message}`);
         if (!res.headersSent) {
-            res.writeHead(502);
-            res.end('Preview server unavailable or starting...');
+            res.writeHead(503, { "Content-Type": "text/plain", "Retry-After": "10" });
+            res.end("Preview server unavailable or starting...");
         }
     });
 });

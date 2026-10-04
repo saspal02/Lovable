@@ -38,5 +38,6 @@ k8s/.env
 k8s/**/secrets.yaml
 k8s/**/secrets.*.yaml
 !k8s/**/secrets.TEMPLATE.yaml
+.junie
 
 skills-lock.json

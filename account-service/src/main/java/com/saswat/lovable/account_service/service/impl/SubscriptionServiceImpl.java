@@ -32,7 +32,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final UserRepository userRepository;
     private final PlanRepository planRepository;
 
-    private final Integer FREE_TIER_PROJECTS_ALLOWED = 100;
+    private final Integer FREE_TIER_PROJECTS_ALLOWED = 2;
 
 
     @Override
@@ -148,6 +148,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     @Override
     public PlanDto getCurrentSubscribedPlanByUser() {
         SubscriptionResponse subscriptionResponse = getCurrentSubscription();
+        if (subscriptionResponse.plan() == null) {
+            return new PlanDto(null, "FREE", FREE_TIER_PROJECTS_ALLOWED, 50000, false, "0");
+        }
         return subscriptionResponse.plan();
     }
 

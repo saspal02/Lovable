@@ -41,7 +41,7 @@ spec:
 
         # 2. THE SYNCER (MinIO mc)
         - name: syncer
-          image: minio/mc
+          image: pgsty/mc:latest
           command: ["/bin/sh", "-c", "sleep infinity"]
           env:
             - name: MINIO_USER

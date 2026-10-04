@@ -24,6 +24,13 @@ export interface DeployResponse {
   previewUrl: string;
 }
 
+export type PreviewStatus = "CREATING" | "RUNNING" | "FAILED" | "TERMINATED";
+
+export interface PreviewStatusResponse {
+  status: PreviewStatus;
+  previewUrl: string;
+}
+
 export interface ChatHistoryMessage {
   id: number;
   role: "USER" | "ASSISTANT";

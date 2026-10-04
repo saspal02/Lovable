@@ -60,6 +60,15 @@ public class FileTreeContextAdvisor implements StreamAdvisor {
         String fileTreeContext = "\n\n ---- FILE_TREE ----\n"+fileTree.toString();
         allMessages.add(new SystemMessage(fileTreeContext));
 
+        try {
+            String packageJson = workspaceClient.getFileContent(projectId, "package.json");
+            if (packageJson != null && !packageJson.isBlank()) {
+                allMessages.add(new SystemMessage("\n\n ---- PACKAGE_JSON ----\n" + packageJson));
+            }
+        } catch (Exception e) {
+            log.warn("Could not load package.json for project {}", projectId);
+        }
+
         allMessages.addAll(userMessages);
 
         return request
