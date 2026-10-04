@@ -1,6 +1,8 @@
 package com.saswat.lovable.workspace_service.service.impl;
 
+import com.saswat.lovable.common_lib.enums.PreviewStatus;
 import com.saswat.lovable.workspace_service.dto.project.DeployResponse;
+import com.saswat.lovable.workspace_service.dto.project.PreviewStatusResponse;
 import com.saswat.lovable.workspace_service.service.DeploymentService;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -13,6 +15,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -39,11 +44,8 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
     private static final String BUSY = "busy";
 
     public DeployResponse deploy(Long projectId) {
-        String domain = "project-" + projectId + "." + baseDomain;
-
-        String formattedUrl = proxyPort.equals("80")
-                ? "http://" + domain
-                : "http://" + domain + ":" + proxyPort;
+        String domain = previewDomain(projectId);
+        String formattedUrl = previewUrl(domain);
 
         Pod existingPod = findActivePod(projectId);
 
@@ -54,6 +56,48 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
         }
 
         return claimAndStartNewPod(projectId, domain, formattedUrl);
+    }
+
+    @Override
+    public PreviewStatusResponse getStatus(Long projectId) {
+        String domain = previewDomain(projectId);
+        String target = redisTemplate.opsForValue().get("route:" + domain);
+        if (target == null) {
+            return new PreviewStatusResponse(PreviewStatus.TERMINATED, previewUrl(domain));
+        }
+        boolean reachable = isReachable(target);
+        PreviewStatus status = reachable ? PreviewStatus.RUNNING : PreviewStatus.CREATING;
+        return new PreviewStatusResponse(status, previewUrl(domain));
+    }
+
+    private String previewDomain(Long projectId) {
+        return "project-" + projectId + "." + baseDomain;
+    }
+
+    private String previewUrl(String domain) {
+        if (proxyPort.equals("80")) {
+            return "http://" + domain;
+        }
+        return "http://" + domain + ":" + proxyPort;
+    }
+
+    private boolean isReachable(String target) {
+        String[] parts = target.split(":");
+        if (parts.length != 2) {
+            return false;
+        }
+        int port;
+        try {
+            port = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(parts[0], port), 2000);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private Pod findActivePod(Long projectId) {
@@ -89,13 +133,18 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             String watchCmd = String.format("nohup mc mirror --overwrite --watch myminio/projects/%d/ /app/ > /app/sync.log 2>&1 &", projectId);
             execCommand(podName, "syncer", "sh", "-c", watchCmd);
 
-            String startCmd = "npm install && nohup npm run dev -- --host 0.0.0.0 --port 5173 > /app/dev.log 2>&1 &";
+            String startCmd = "npm install && cp /app/package.json /tmp/package.last"
+                    + " && nohup npm run dev -- --host 0.0.0.0 --port 5173 > /app/dev.log 2>&1 &"
+                    + " nohup sh -c 'while true; do sleep 15;"
+                    + " if ! cmp -s /app/package.json /tmp/package.last; then"
+                    + " npm install --prefix /app --no-fund --no-audit >> /app/pkgwatch.log 2>&1;"
+                    + " cp /app/package.json /tmp/package.last; fi; done' > /app/pkgwatch.log 2>&1 &";
             execCommand(podName, "runner", "sh", "-c", startCmd);
 
             Pod updatedPod = client.pods().inNamespace(namespace).withName(podName).get();
             registerRoute(domain, updatedPod);
 
-            log.info("Deployment successful: {}", formattedUrl);
+            log.info("[Workspace] - DEPLOY: successful: {}", formattedUrl);
             return new DeployResponse(formattedUrl);
 
         } catch (Exception e) {
