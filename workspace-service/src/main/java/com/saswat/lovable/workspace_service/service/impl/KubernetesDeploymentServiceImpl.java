@@ -42,6 +42,7 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
     private static final String PROJECT_LABEL = "project-id";
     private static final String IDLE = "idle";
     private static final String BUSY = "busy";
+    private static final int TCP_PROBE_TIMEOUT_MS = 2000;
 
     public DeployResponse deploy(Long projectId) {
         String domain = previewDomain(projectId);
@@ -93,7 +94,7 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             return false;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(parts[0], port), 2000);
+            socket.connect(new InetSocketAddress(parts[0], port), TCP_PROBE_TIMEOUT_MS);
             return true;
         } catch (IOException e) {
             return false;
