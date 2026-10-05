@@ -48,7 +48,7 @@ The platform supports multi-user collaboration, subscription-based billing via S
 
 ### Demo
 
-![Lovable Demo](docs/lovable-demo.webm)
+Link- https://youtu.be/B6HJi5CeOBk
 
 ---
 
