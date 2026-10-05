@@ -43,6 +43,7 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
     private static final String IDLE = "idle";
     private static final String BUSY = "busy";
     private static final int TCP_PROBE_TIMEOUT_MS = 2000;
+    private static final String INSTALL_LOCK_DIR = "/tmp/preview-install.lock";
 
     public DeployResponse deploy(Long projectId) {
         String domain = previewDomain(projectId);
@@ -52,6 +53,7 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
 
         if (existingPod != null) {
             log.info("Found existing pod {} for project {}. Resuming...", existingPod.getMetadata().getName(), projectId);
+            execCommand(existingPod.getMetadata().getName(), "runner", "sh", "-c", refreshCmd());
             registerRoute(domain, existingPod);
             return new DeployResponse(formattedUrl);
         }
@@ -134,12 +136,7 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             String watchCmd = String.format("nohup mc mirror --overwrite --watch myminio/projects/%d/ /app/ > /app/sync.log 2>&1 &", projectId);
             execCommand(podName, "syncer", "sh", "-c", watchCmd);
 
-            String startCmd = "npm install && cp /app/package.json /tmp/package.last"
-                    + " && nohup npm run dev -- --host 0.0.0.0 --port 5173 > /app/dev.log 2>&1 &"
-                    + " nohup sh -c 'while true; do sleep 15;"
-                    + " if ! cmp -s /app/package.json /tmp/package.last; then"
-                    + " npm install --prefix /app --no-fund --no-audit >> /app/pkgwatch.log 2>&1;"
-                    + " cp /app/package.json /tmp/package.last; fi; done' > /app/pkgwatch.log 2>&1 &";
+            String startCmd = initialStartCmd();
             execCommand(podName, "runner", "sh", "-c", startCmd);
 
             Pod updatedPod = client.pods().inNamespace(namespace).withName(podName).get();
@@ -153,6 +150,30 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             client.pods().inNamespace(namespace).withName(podName).delete();
             throw new RuntimeException("Failed to deploy project " + projectId + ": " + e.getMessage(), e);
         }
+    }
+
+    private static String initialStartCmd() {
+        return "(mkdir " + INSTALL_LOCK_DIR + " 2>/dev/null || exit 0; "
+                + "if [ ! -d /app/node_modules ] || [ -z \"$(ls -A /app/node_modules 2>/dev/null)\" ]; then "
+                + "cp -r /opt/prebake/node_modules /app/node_modules 2>/dev/null || true; fi; "
+                + "npm install --no-fund --no-audit --prefix /app >>/app/install.log 2>&1; "
+                + "if [ ! -f /app/node_modules/vite/dist/node/cli.js ]; then "
+                + "npm install --no-fund --no-audit --prefix /app >>/app/install.log 2>&1; fi; "
+                + "cp /app/package.json /tmp/package.last; "
+                + "rmdir " + INSTALL_LOCK_DIR + " 2>/dev/null; "
+                + "if [ -f /app/node_modules/vite/dist/node/cli.js ]; then "
+                + "nohup npm run dev -- --host 0.0.0.0 --port 5173 >/app/dev.log 2>&1 & echo $! > /tmp/dev.pid; fi) &";
+    }
+
+    private static String refreshCmd() {
+        return "(if cmp -s /app/package.json /tmp/package.last 2>/dev/null; then exit 0; fi; "
+                + "mkdir " + INSTALL_LOCK_DIR + " 2>/dev/null || exit 0; "
+                + "npm install --no-fund --no-audit --prefix /app >>/app/install.log 2>&1 "
+                + "&& cp /app/package.json /tmp/package.last; "
+                + "rmdir " + INSTALL_LOCK_DIR + " 2>/dev/null; "
+                + "if [ -f /app/node_modules/vite/dist/node/cli.js ]; then "
+                + "kill $(cat /tmp/dev.pid 2>/dev/null) 2>/dev/null || true; "
+                + "nohup npm run dev -- --host 0.0.0.0 --port 5173 >/app/dev.log 2>&1 & echo $! > /tmp/dev.pid; fi) &";
     }
 
     private void registerRoute(String domain, Pod pod) {
