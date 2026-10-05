@@ -48,10 +48,7 @@ The platform supports multi-user collaboration, subscription-based billing via S
 
 ### Demo
 
-<video controls width="100%">
-  <source src="docs/lovable-demo.webm" type="video/webm">
-  Your browser does not support the video tag.
-</video>
+![Lovable Demo](docs/lovable-demo.webm)
 
 ---
 
@@ -615,20 +612,3 @@ lovable/
 ```
 
 ---
-
-## Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. **Fork the repository** and create a feature branch (`git checkout -b feature/amazing-feature`).
-2. **Follow the code style** — 4-space indentation, explicit types (no `var`), descriptive names, and Lombok annotations (`@RequiredArgsConstructor`, `@Slf4j`, `@Builder`).
-3. **Commit clearly** — Use conventional commit messages (e.g., `feat: add preview status polling`, `fix: serialize npm installs`).
-4. **Test your changes** — Ensure existing tests pass and add tests for new functionality.
-5. **Open a Pull Request** — Describe your changes, reference any related issues, and request a review.
-
----
-
-## License
-
-This project is licensed under the MIT License.
-
