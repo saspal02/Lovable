@@ -32,7 +32,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final UserRepository userRepository;
     private final PlanRepository planRepository;
 
-    private final Integer FREE_TIER_PROJECTS_ALLOWED = 2;
+    private final Integer FREE_TIER_PROJECTS_ALLOWED = 10;
 
 
     @Override
