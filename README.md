@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-kind-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18%20pgvector-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 
 Describe what you want to build in natural language — Lovable generates, deploys, and previews working web applications in real time.
 
@@ -18,7 +18,7 @@ Describe what you want to build in natural language — Lovable generates, deplo
 - [Demo](#demo)
 - [Architecture](#architecture)
   - [System Architecture](#system-architecture)
-  - [Code Generation vs Code Execution](#code-generation-vs-code-execution)
+  - [Code Generation and Code Execution](#code-generation-and-code-execution)
   - [AI Code Generation Flow](#ai-code-generation-flow)
   - [Code Execution Architecture](#code-execution-architecture)
   - [Database Schema](#database-schema)
@@ -61,7 +61,7 @@ The platform supports multi-user collaboration, subscription-based billing via S
 
 Lovable follows a microservices architecture with six Spring Boot services, a React frontend, and shared infrastructure components.
 
-![Distributed Lovable Architecture](diagrams/distributed_lovable_architecture.png)
+![Distributed Lovable Architecture](docs/distributed_lovable_architecture.png)
 
 **Component breakdown:**
 
@@ -149,7 +149,7 @@ The Intelligence Service focuses purely on **creating** code, while the Workspac
 
 The AI generation pipeline transforms a natural language prompt into deployable code through a multi-step process.
 
-![AI Design Architecture](diagrams/ai_design_architecture.png)
+![AI Design Architecture](docs/ai_design_architecture.png)
 
 **Step-by-step flow:**
 
@@ -169,11 +169,11 @@ The AI generation pipeline transforms a natural language prompt into deployable 
 
 ---
 
-### Code Execution architecture
+### Code Execution Architecture
 
 Each project's live preview runs in an isolated Kubernetes pod, ensuring complete separation between user projects.
 
-![Code Execution System Architecture](diagrams/code_execution_system_architecture.png)
+![Code Execution System Architecture](docs/code_execution_system_architecture.png)
 
 **Architecture details:**
 
@@ -195,7 +195,7 @@ Each project's live preview runs in an isolated Kubernetes pod, ensuring complet
 
 The platform uses PostgreSQL with separate schemas per microservice, following database-per-service pattern.
 
-![Entity Relationship Diagram](diagrams/ER_Diagram.png)
+![Entity Relationship Diagram](docs/ER_Diagram.png)
 
 **Entities by service:**
 
@@ -213,7 +213,7 @@ The `pgvector` extension is available for potential semantic search and embeddin
 
 The project uses GitHub Actions for continuous integration. Each service has a dedicated workflow that automatically builds and pushes Docker images to Docker Hub on every push to the `main` branch.
 
-![CI/CD Pipeline](diagrams/ci_cd_pipeline.png)
+![CI/CD Pipeline](docs/ci_cd_pipeline.png)
 
 **Build workflow (per service):**
 
@@ -240,9 +240,9 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 
 **Additional documentation:**
 
-- 📄 [Feature Overview & API Summary](diagrams/Lovable_Clone.pdf) — Core features, API endpoints, Stripe payments, quota management, and rate limiting.
-- 📄 [Detailed Microservice Architecture Reference](diagrams/Distributed_Lovable_Architecture.pdf) — Service responsibilities, dependencies, entities, security model, Feign clients, and K8s deployment guide.
-- 📄 [Complete API Endpoint Reference](diagrams/APIs_Lovable_Clone_Project_.pdf) — Full REST API documentation with request/response examples.
+- 📄 [Feature Overview & API Summary](docs/Lovable_Clone.pdf) — Core features, API endpoints, Stripe payments, quota management, and rate limiting.
+- 📄 [Detailed Microservice Architecture Reference](docs/Distributed_Lovable_Architecture.pdf) — Service responsibilities, dependencies, entities, security model, Feign clients, and K8s deployment guide.
+- 📄 [Complete API Endpoint Reference](docs/APIs_Lovable_Clone_Project_.pdf) — Full REST API documentation with request/response examples.
 
 ---
 
@@ -424,11 +424,7 @@ cd lovable
 
 #### 2. Configure Environment Variables
 
-Copy the `.env` template and adjust values for your environment:
-
-```bash
-cp .env.example .env
-```
+Edit the `.env` file in the project root and adjust values for your environment.
 
 #### 3. Start Infrastructure Services
 
@@ -612,10 +608,10 @@ lovable/
 │   ├── runner/               # Runner pod templates
 │   ├── stateful/             # StatefulSet definitions
 │   └── kind/                 # Kind cluster configuration
-├── diagrams/                 # Architecture and workflow diagrams
+├── docs/                     # Architecture diagrams, PDFs, and demo video
 ├── .github/workflows/        # GitHub Actions CI/CD workflows
 ├── docker-compose.yml        # Local infrastructure (PostgreSQL, MinIO, Redis, Kafka)
-└── .env                      # Environment variables template
+└── .env                      # Environment variables
 ```
 
 ---
@@ -634,5 +630,5 @@ Contributions are welcome! Please follow these guidelines:
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the MIT License.
 
