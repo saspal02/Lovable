@@ -56,18 +56,19 @@ public class AiGenerationServiceImpl implements AiGenerationService {
 
     @Override
     @PreAuthorize("@security.canEditProject(#projectId)")
-    public Flux<StreamResponse> streamResponse(String userMessage, Long projectId) {
+    public Flux<StreamResponse> streamResponse(String userMessage, Long projectId, String authorization) {
 
         Long userId = authUtil.getCurrentUserId();
         ChatSession chatSession = createChatSessionIfNotExists(projectId, userId);
 
         Map<String, Object> advisorParams = Map.of(
                 "userId", userId,
-                "projectId", projectId
+                "projectId", projectId,
+                "authorization", authorization
         );
 
         StringBuilder fullResponseBuffer = new StringBuilder();
-        CodeGenerationTools codeGenerationTools = new CodeGenerationTools(projectId, workspaceClient);
+        CodeGenerationTools codeGenerationTools = new CodeGenerationTools(projectId, workspaceClient, authorization);
 
         AtomicReference<Long> startTime = new AtomicReference<>(System.currentTimeMillis());
         AtomicReference<Long> endTime = new AtomicReference<>(0L);

@@ -25,6 +25,9 @@ public class SharedSecurityAutoConfiguration {
     @Bean
     public RequestInterceptor requestInterceptor() {
         return requestTemplate -> {
+            if (requestTemplate.headers().containsKey("Authorization")) {
+                return;
+            }
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
             if (authentication != null && authentication.getCredentials() instanceof String token) {

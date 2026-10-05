@@ -30,13 +30,14 @@ public class FileTreeContextAdvisor implements StreamAdvisor {
     public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain streamAdvisorChain) {
         Map<String, Object> context = request.context();
         Long projectId = Long.parseLong(context.getOrDefault("projectId", 0).toString());
+        String authorization = context.getOrDefault("authorization", "").toString();
 
-        ChatClientRequest augmentedChatClientRequest = augmentRequestWithFileTree(request, projectId);
+        ChatClientRequest augmentedChatClientRequest = augmentRequestWithFileTree(request, projectId, authorization);
 
         return streamAdvisorChain.nextStream(augmentedChatClientRequest);
     }
 
-    private ChatClientRequest augmentRequestWithFileTree(ChatClientRequest request, Long projectId) {
+    private ChatClientRequest augmentRequestWithFileTree(ChatClientRequest request, Long projectId, String authorization) {
 
         List<Message> incomingMessages = request.prompt().getInstructions();
 
@@ -56,12 +57,12 @@ public class FileTreeContextAdvisor implements StreamAdvisor {
             allMessages.add(systemMessage);
         }
 
-        List<FileNode> fileTree = workspaceClient.getFileTree(projectId).files();
+        List<FileNode> fileTree = workspaceClient.getFileTree(projectId, authorization).files();
         String fileTreeContext = "\n\n ---- FILE_TREE ----\n"+fileTree.toString();
         allMessages.add(new SystemMessage(fileTreeContext));
 
         try {
-            String packageJson = workspaceClient.getFileContent(projectId, "package.json");
+            String packageJson = workspaceClient.getFileContent(projectId, "package.json", authorization);
             if (packageJson != null && !packageJson.isBlank()) {
                 allMessages.add(new SystemMessage("\n\n ---- PACKAGE_JSON ----\n" + packageJson));
             }

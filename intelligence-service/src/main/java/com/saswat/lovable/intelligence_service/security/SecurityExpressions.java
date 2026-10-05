@@ -7,6 +7,8 @@ import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 @Component("security")
@@ -19,7 +21,7 @@ public class SecurityExpressions {
 
     private boolean hasPermission(Long projectId, ProjectPermission projectPermission) {
         try {
-            return workspaceClient.checkPermission(projectId, projectPermission);
+            return workspaceClient.checkPermission(projectId, projectPermission, currentAuthorization());
         } catch (FeignException.Unauthorized e) {
             log.warn("Token expired or invalid during permission check for project: {}", projectId);
             throw new CredentialsExpiredException("JWT token is expired or invalid");
@@ -47,5 +49,13 @@ public class SecurityExpressions {
 
     public boolean canManageMembers(Long projectId) {
         return hasPermission(projectId, ProjectPermission.MANAGE_MEMBERS);
+    }
+
+    private String currentAuthorization() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getCredentials() instanceof String token) {
+            return "Bearer " + token;
+        }
+        return null;
     }
 }
