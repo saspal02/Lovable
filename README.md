@@ -19,7 +19,7 @@ Describe what you want to build in natural language — Lovable generates, deplo
   - [System Architecture](#system-architecture)
   - [Code Generation vs Code Execution](#code-generation-vs-code-execution)
   - [AI Code Generation Flow](#ai-code-generation-flow)
-  - [Preview & Runner System](#preview--runner-system)
+  - [Code Execution Architecture](#code-execution-architecture)
   - [Database Schema](#database-schema)
   - [CI/CD Pipeline](#ci-cd-pipeline)
 - [Key Features](#key-features)
@@ -91,12 +91,13 @@ Lovable is architecturally divided into two distinct domains: **Code Generation*
 The **Intelligence Service** (Port 8083) is the brain of the platform. It handles everything related to AI-powered code creation:
 
 - **Natural Language Understanding** — Receives user prompts describing the desired application in plain English.
-- **Context Assembly** — Fetches the current file tree and existing file contents from the Workspace Service via internal Feign clients (`InternalWorkspaceController`). This gives the AI full awareness of what already exists.
-- **System Prompt Construction** — Builds a comprehensive prompt that combines the user's request with the project's current state, ensuring context-aware and incremental code changes.
+- **Context Assembly** — Fetches the current file tree, existing file contents, and `package.json` from the Workspace Service via internal Feign clients (`InternalWorkspaceController`). The `package.json` is injected into the LLM context as `PACKAGE_JSON` so the AI knows which third-party packages are already available.
+- **System Prompt Construction** — Builds a comprehensive prompt that combines the user's request with the project's current state, ensuring context-aware and incremental code changes. The AI is instructed to only import packages already listed in `package.json`, preventing dependency bloat.
 - **LLM Integration** — Sends the assembled prompt to OpenAI's API via Spring AI (`AiGenerationServiceImpl`). The LLM generates complete HTML, CSS, and JavaScript code.
 - **Streaming Response** — Returns the AI's response as a real-time stream using Server-Sent Events (SSE), so the user sees code appear character-by-character in the chat interface.
 - **Chat History** — Persists every message (user prompts and AI responses) in PostgreSQL for conversation continuity across sessions.
 - **Token Tracking** — Logs token consumption per message for usage monitoring and quota enforcement.
+- **Auth Header Propagation** — Passes the user's `Authorization` header through to Workspace Service internal calls, ensuring proper permission checks during context assembly.
 
 **Key classes:** `ChatController.java` (SSE endpoint), `AiGenerationServiceImpl.java` (LLM orchestration), `ChatSessionRepository.java`, `ChatMessageRepository.java`.
 
@@ -108,7 +109,10 @@ The **Workspace Service** (Port 8082) is the engine that makes generated code ru
 - **File Tree Management** — Stores and retrieves the hierarchical file structure for each project. Files are stored as objects in MinIO (S3-compatible), with metadata in PostgreSQL (`ProjectFile` entity).
 - **Kafka Consumer** — Listens for file storage events published by the Intelligence Service after AI generation. Consumes the event, parses the generated files, and stores them in MinIO.
 - **Preview Deployment** — When a user triggers a deployment (`POST /projects/{id}/deploy`), the service uses the Fabric8 Kubernetes Client (`DeploymentService.java`) to create an isolated pod with runner and syncer containers.
-- **Runner Pod Lifecycle** — Manages the full lifecycle of preview pods: creation, status monitoring, and cleanup. Each pod serves the generated files via an HTTP server.
+- **Runner Pod Lifecycle** — Manages the full lifecycle of preview pods: creation, status monitoring, and cleanup. Each pod serves the generated files via an HTTP server. Supports pod resumption for existing deployments.
+- **Pre-baked Runner Image** — Uses a custom Docker image (`saspal02/lovable-runner`) with common npm dependencies (React, Vite, Tailwind, etc.) pre-installed at `/opt/prebake`, significantly reducing preview startup time.
+- **Serialized npm Installs** — Uses file-based locking (`/tmp/preview-install.lock`) to prevent concurrent `npm install` operations within a pod, avoiding race conditions when files update rapidly.
+- **Preview Status API** — Exposes `GET /projects/{id}/preview-status` endpoint that returns the pod's current status (`CREATING`, `RUNNING`, `FAILED`, `TERMINATED`), enabling the frontend to poll and display real-time preview readiness.
 - **Multi-User Collaboration** — Manages project members with role-based access (EDITOR/VIEWER) via the `ProjectMember` entity.
 
 **Key classes:** `ProjectController.java` (project CRUD), `FileController.java` (file tree operations), `DeploymentService.java` (K8s pod management), `ProjectMemberController.java` (collaboration), `FileStorageConsumer.java` (Kafka consumer).
@@ -146,19 +150,21 @@ The AI generation pipeline transforms a natural language prompt into deployable 
 
 1. **User Prompt** — The user types a description of the desired application in the React frontend chat interface.
 2. **Request Routing** — The request travels through the API Gateway to the Intelligence Service (`ChatController.java`).
-3. **System Prompt Construction** — The service builds a system prompt that includes:
-   - The current file tree structure (fetched from Workspace Service via internal Feign client).
+3. **Context Assembly** — The service fetches the current file tree, existing file contents, and `package.json` from the Workspace Service via internal Feign clients. The `Authorization` header is propagated to ensure proper permission checks.
+4. **System Prompt Construction** — The service builds a system prompt that includes:
+   - The current file tree structure.
    - Existing file contents for context-aware generation.
-   - Project-specific constraints and guidelines.
-4. **LLM Call** — The assembled prompt is sent to OpenAI's API via Spring AI (`AiGenerationServiceImpl.java`).
-5. **Streaming Response** — The LLM response streams back as SSE events to the frontend in real time.
-6. **File Parsing** — The streamed response is parsed to extract code blocks with file paths.
-7. **File Storage** — Parsed files are published to Kafka, where the Workspace Service consumes the event and stores them in MinIO.
-8. **Preview Deployment** — The Workspace Service triggers a Kubernetes deployment, creating an isolated pod for the updated preview.
+   - The project's `package.json` as `PACKAGE_JSON` context, so the AI knows which packages are available.
+   - Project-specific constraints and guidelines, including a rule to only import packages already listed in `package.json`.
+5. **LLM Call** — The assembled prompt is sent to OpenAI's API via Spring AI (`AiGenerationServiceImpl.java`).
+6. **Streaming Response** — The LLM response streams back as SSE events to the frontend in real time.
+7. **File Parsing** — The streamed response is parsed to extract code blocks with file paths.
+8. **File Storage** — Parsed files are published to Kafka, where the Workspace Service consumes the event and stores them in MinIO.
+9. **Preview Deployment** — The Workspace Service triggers a Kubernetes deployment, creating an isolated pod for the updated preview. The frontend polls the preview status endpoint to show real-time readiness.
 
 ---
 
-### Preview & Runner System
+### Code Execution architecture
 
 Each project's live preview runs in an isolated Kubernetes pod, ensuring complete separation between user projects.
 
@@ -167,12 +173,14 @@ Each project's live preview runs in an isolated Kubernetes pod, ensuring complet
 **Architecture details:**
 
 - **Runner Pod** — When a project is deployed (`POST /projects/{id}/deploy`), the Workspace Service creates a dedicated Kubernetes pod containing two containers:
-  - **Runner container**: Serves the generated files via an HTTP server.
-  - **Syncer container**: Fetches the latest files from MinIO and keeps the runner's file system synchronized.
-- **Dependency Resolution** — The runner resolves npm dependencies for the generated project before serving.
-- **Reverse Proxy** — A dedicated proxy service (`lovable-me-proxy`) routes incoming preview requests to the correct runner pod based on the subdomain.
-- **Redis URL Mapping** — The mapping between preview subdomains (`{projectId}.previews.lovable.in`) and pod IPs is stored in Redis for fast lookups.
-- **Network Policies** — Kubernetes network policies isolate preview pods from the core services, ensuring security boundaries.
+  - **Runner container**: Uses a pre-baked image (`saspal02/lovable-runner:1`) with common npm dependencies (React, Vite, Tailwind, Radix UI, etc.) pre-installed at `/opt/prebake/node_modules`. On startup, it copies these pre-baked dependencies, then runs `npm install` to add any project-specific packages. This reduces cold-start time significantly.
+  - **Syncer container**: Uses `pgsty/mc:latest` to fetch the latest files from MinIO via `mc mirror --watch`, keeping the runner's file system synchronized in real time.
+  - **Dependency Resolution** — The runner uses file-based locking to serialize `npm install` operations, preventing race conditions. It also watches for `package.json` changes and auto-reinstalls dependencies when new packages are added by the AI.
+  - **Reverse Proxy** — A dedicated proxy service (`lovable-me-proxy`) routes incoming preview requests to the correct runner pod based on the subdomain. Returns HTTP 503 with `Retry-After: 10` header when a preview is still starting.
+  - **Redis URL Mapping** — The mapping between preview subdomains (`{projectId}.previews.lovable.in`) and pod IPs is stored in Redis for fast lookups.
+  - **Resource Limits** — Runner pods are configured with higher CPU limits (up to 2000m) and memory limits (2Gi) to handle npm installs and Vite dev server efficiently.
+  - **Network Policies** — Kubernetes network policies isolate preview pods from the core services, ensuring security boundaries.
+  - **Preview Status Polling** — The frontend polls `GET /projects/{id}/preview-status` every 5 seconds (up to 10 minutes) to display real-time preview readiness, showing a loading state while the pod starts and notifying the user if the preview terminates.
 
 **Deployment command in code:** `DeploymentService.java` uses the Fabric8 Kubernetes Client to programmatically create and manage preview pods.
 
@@ -236,9 +244,9 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 ## Key Features
 
 - **AI-Powered Code Generation** — Natural language to production-ready code with real-time streaming responses via Server-Sent Events.
-- **Live Preview Deployments** — Each project gets an isolated Kubernetes pod with a unique subdomain for instant preview.
+- **Live Preview Deployments** — Each project gets an isolated Kubernetes pod with a unique subdomain for instant preview. Uses a pre-baked runner image with common npm dependencies for faster cold starts.
 - **Multi-User Collaboration** — Invite team members to projects with role-based access control (EDITOR/VIEWER).
-- **Stripe Subscription Billing** — Integrated payment processing with FREE and PRO plans, checkout sessions, and customer portal.
+- **Stripe Subscription Billing** — Integrated payment processing with FREE (10 projects, 50K tokens) and PRO plans, checkout sessions, and customer portal.
 - **Token Usage Tracking** — Per-user token consumption logging with plan-based quota enforcement.
 - **File Tree Management** — Hierarchical file storage in MinIO with S3-compatible API, supporting nested directories.
 - **Chat History** — Persistent conversation history per project, stored in PostgreSQL.
@@ -329,7 +337,7 @@ All public endpoints are accessed through the API Gateway at `api.lovable.in`. I
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/auth/signup` | Register a new user account |
+| `POST` | `/auth/signup` | Register a new user account (free tier: 10 projects, 50K tokens) |
 | `POST` | `/auth/login` | Authenticate and receive JWT token |
 
 ### Billing (Account Service)
@@ -350,8 +358,8 @@ All public endpoints are accessed through the API Gateway at `api.lovable.in`. I
 | `POST` | `/projects` | Create a new project |
 | `PATCH` | `/projects/{id}` | Update project title/description |
 | `DELETE` | `/projects/{id}` | Soft-delete a project |
-| `POST` | `/projects/{id}/deploy` | Deploy project to a preview pod |
-| `GET` | `/projects/{id}/preview-status` | Get current preview deployment status |
+| `POST` | `/projects/{id}/deploy` | Deploy project to a preview pod (resumes existing pod if found) |
+| `GET` | `/projects/{id}/preview-status` | Get current preview deployment status (`CREATING`/`RUNNING`/`FAILED`/`TERMINATED`) |
 
 ### Files (Workspace Service)
 
@@ -383,8 +391,8 @@ All public endpoints are accessed through the API Gateway at `api.lovable.in`. I
 | `GET` | `/internal/v1/users/{id}` | Account | Fetch user by ID |
 | `GET` | `/internal/v1/users/by-email` | Account | Fetch user by email |
 | `GET` | `/internal/v1/billing/current-plan` | Account | Get current user's subscribed plan |
-| `GET` | `/internal/v1/projects/{projectId}/files/tree` | Workspace | Get file tree for AI context |
-| `GET` | `/internal/v1/projects/{projectId}/files/content` | Workspace | Get file content for AI context |
+| `GET` | `/internal/v1/projects/{projectId}/files/tree` | Workspace | Get file tree for AI context (requires Authorization header) |
+| `GET` | `/internal/v1/projects/{projectId}/files/content` | Workspace | Get file content for AI context (requires Authorization header) |
 | `GET` | `/internal/v1/projects/{projectId}/permissions/check` | Workspace | Check user's permission on a project |
 
 ---
@@ -602,7 +610,24 @@ lovable/
 ├── diagrams/                 # Architecture and workflow diagrams
 ├── .github/workflows/        # GitHub Actions CI/CD workflows
 ├── docker-compose.yml        # Local infrastructure (PostgreSQL, MinIO, Redis, Kafka)
-├── kind-lovable.yaml         # Kind cluster configuration
 └── .env                      # Environment variables template
 ```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please follow these guidelines:
+
+1. **Fork the repository** and create a feature branch (`git checkout -b feature/amazing-feature`).
+2. **Follow the code style** — 4-space indentation, explicit types (no `var`), descriptive names, and Lombok annotations (`@RequiredArgsConstructor`, `@Slf4j`, `@Builder`).
+3. **Commit clearly** — Use conventional commit messages (e.g., `feat: add preview status polling`, `fix: serialize npm installs`).
+4. **Test your changes** — Ensure existing tests pass and add tests for new functionality.
+5. **Open a Pull Request** — Describe your changes, reference any related issues, and request a review.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 
