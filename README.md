@@ -4,7 +4,7 @@
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6db33f?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![React](https://img.shields.io/badge/React-18.3-61dafb?logo=react&logoColor=black)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-kind%2Fgke-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-kind-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18%20pgvector-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -17,6 +17,7 @@ Describe what you want to build in natural language — Lovable generates, deplo
 - [Overview](#overview)
 - [Architecture](#architecture)
   - [System Architecture](#system-architecture)
+  - [Code Generation vs Code Execution](#code-generation-vs-code-execution)
   - [AI Code Generation Flow](#ai-code-generation-flow)
   - [Preview & Runner System](#preview--runner-system)
   - [Database Schema](#database-schema)
@@ -42,7 +43,7 @@ Describe what you want to build in natural language — Lovable generates, deplo
 
 **Lovable** is a full-stack AI-powered application generation platform built as a distributed microservices system. Users describe applications in natural language through an interactive chat interface, and the platform's AI engine generates complete web applications — including HTML, CSS, and JavaScript — that are immediately deployable as live previews on Kubernetes.
 
-The platform supports multi-user collaboration, subscription-based billing via Stripe, token usage tracking, and event-driven file storage. It is designed from the ground up for cloud-native deployment with Kubernetes, service discovery, and CI/CD via GitHub Actions with OIDC authentication.
+The platform supports multi-user collaboration, subscription-based billing via Stripe, token usage tracking, and event-driven file storage. It is designed from the ground up for cloud-native deployment with Kubernetes, service discovery, and CI/CD via GitHub Actions that automatically build and push Docker images to Docker Hub.
 
 ---
 
@@ -78,6 +79,60 @@ Lovable follows a microservices architecture with six Spring Boot services, a Re
 3. Services communicate via **Feign clients** (synchronous) and **Kafka** (asynchronous).
 4. All services fetch shared configuration from the **Config Service**, which pulls from a Git repository.
 5. Generated files are stored in **MinIO**, preview URLs are cached in **Redis**, and persistent data resides in **PostgreSQL**.
+
+---
+
+### Code Generation vs Code Execution
+
+Lovable is architecturally divided into two distinct domains: **Code Generation** and **Code Execution**. These two domains are implemented by separate microservices with clear responsibilities, enabling independent scaling and evolution.
+
+#### Code Generation — Intelligence Service
+
+The **Intelligence Service** (Port 8083) is the brain of the platform. It handles everything related to AI-powered code creation:
+
+- **Natural Language Understanding** — Receives user prompts describing the desired application in plain English.
+- **Context Assembly** — Fetches the current file tree and existing file contents from the Workspace Service via internal Feign clients (`InternalWorkspaceController`). This gives the AI full awareness of what already exists.
+- **System Prompt Construction** — Builds a comprehensive prompt that combines the user's request with the project's current state, ensuring context-aware and incremental code changes.
+- **LLM Integration** — Sends the assembled prompt to OpenAI's API via Spring AI (`AiGenerationServiceImpl`). The LLM generates complete HTML, CSS, and JavaScript code.
+- **Streaming Response** — Returns the AI's response as a real-time stream using Server-Sent Events (SSE), so the user sees code appear character-by-character in the chat interface.
+- **Chat History** — Persists every message (user prompts and AI responses) in PostgreSQL for conversation continuity across sessions.
+- **Token Tracking** — Logs token consumption per message for usage monitoring and quota enforcement.
+
+**Key classes:** `ChatController.java` (SSE endpoint), `AiGenerationServiceImpl.java` (LLM orchestration), `ChatSessionRepository.java`, `ChatMessageRepository.java`.
+
+#### Code Execution — Workspace Service
+
+The **Workspace Service** (Port 8082) is the engine that makes generated code runnable. It handles everything related to project management, file storage, and live preview deployment:
+
+- **Project Management** — Full CRUD for projects, including creation, updates, and soft-deletion.
+- **File Tree Management** — Stores and retrieves the hierarchical file structure for each project. Files are stored as objects in MinIO (S3-compatible), with metadata in PostgreSQL (`ProjectFile` entity).
+- **Kafka Consumer** — Listens for file storage events published by the Intelligence Service after AI generation. Consumes the event, parses the generated files, and stores them in MinIO.
+- **Preview Deployment** — When a user triggers a deployment (`POST /projects/{id}/deploy`), the service uses the Fabric8 Kubernetes Client (`DeploymentService.java`) to create an isolated pod with runner and syncer containers.
+- **Runner Pod Lifecycle** — Manages the full lifecycle of preview pods: creation, status monitoring, and cleanup. Each pod serves the generated files via an HTTP server.
+- **Multi-User Collaboration** — Manages project members with role-based access (EDITOR/VIEWER) via the `ProjectMember` entity.
+
+**Key classes:** `ProjectController.java` (project CRUD), `FileController.java` (file tree operations), `DeploymentService.java` (K8s pod management), `ProjectMemberController.java` (collaboration), `FileStorageConsumer.java` (Kafka consumer).
+
+#### How They Work Together
+
+```
+User Prompt → Intelligence Service (Code Generation)
+                    │
+                    ├─ Fetches file tree from Workspace Service
+                    ├─ Calls LLM → Streams code back
+                    └─ Publishes generated files to Kafka
+                           │
+Workspace Service (Code Execution) ← Consumes from Kafka
+                    │
+                    ├─ Stores files in MinIO
+                    └─ Deploys preview pod on Kubernetes
+```
+
+The Intelligence Service focuses purely on **creating** code, while the Workspace Service focuses purely on **storing and running** it. This separation ensures that:
+
+- AI generation can scale independently of preview deployments.
+- File storage and preview infrastructure are centralized in one service.
+- Each service has a single, well-defined responsibility following the Single Responsibility Principle.
 
 ---
 
@@ -143,27 +198,37 @@ The `pgvector` extension is available for potential semantic search and embeddin
 
 ### CI/CD Pipeline
 
-All deployments use GitHub Actions with OIDC (OpenID Connect) authentication for passwordless access to Google Kubernetes Engine (GKE).
+The project uses GitHub Actions for continuous integration. Each service has a dedicated workflow that automatically builds and pushes Docker images to Docker Hub on every push to the `main` branch.
 
-![GCE Authentication Flow](diagrams/GCE_Authentication_a53abb953b.png)
+![CI/CD Pipeline](diagrams/ci_cd_pipeline.png)
 
-**Deployment workflow (8 steps):**
+**Build workflow (per service):**
 
 1. **Code Push** — Developer pushes changes to the `main` branch, triggering the GitHub Actions workflow.
 2. **Path Filtering** — Each workflow monitors specific paths (e.g., `account-service/**`, `common-lib/**`) to avoid unnecessary builds.
 3. **JDK 25 Setup** — The workflow configures Temurin JDK 25 with Maven caching.
-4. **Common Lib Install** — `common-lib` is built and installed to the local Maven repository before any dependent service.
+4. **Common Lib Install** — For services depending on `common-lib` (account, workspace, intelligence), it is built and installed to the local Maven repository first.
 5. **Service Build** — The target service is packaged with `mvn clean package -DskipTests`.
-6. **Docker Image Build** — Jib Maven plugin builds and pushes the Docker image to Docker Hub, tagged with the git SHA and `latest`.
-7. **OIDC Authentication** — GitHub Actions requests an OIDC token, which is exchanged via Google Workload Identity Pool for short-lived GKE credentials.
-8. **Kubernetes Deployment** — The new image is deployed to GKE using `kubectl` or Helm, with zero-downtime rolling updates.
+6. **Docker Image Build & Push** — Backend services use the Jib Maven plugin to build and push images to Docker Hub. The frontend and proxy use Docker Buildx. All images are tagged with the git SHA and `latest`.
 
-**Workflow files:** Seven dedicated workflows exist in `.github/workflows/`, one per deployable component (account-service, api-gateway, config-service, frontend, intelligence-service, proxy, workspace-service).
+**Workflow files:** Seven dedicated workflows exist in `.github/workflows/`, one per deployable component:
+
+| Workflow | Service | Build Tool |
+|---|---|---|
+| `deploy-account-service.yaml` | Account Service | Jib |
+| `deploy-api-gateway.yaml` | API Gateway | Jib |
+| `deploy-config-service.yaml` | Config Service | Jib |
+| `deploy-frontend.yaml` | Frontend | Docker Buildx |
+| `deploy-intelligence-service.yaml` | Intelligence Service | Jib |
+| `deploy-proxy.yaml` | Preview Proxy | Docker Buildx |
+| `deploy-workspace-service.yaml` | Workspace Service | Jib |
+
+**Deployment to local cluster:** After images are pushed to Docker Hub, deploy them to a local kind cluster using `kubectl apply` with the manifests in `k8s/`. The cluster configuration at `k8s/kind/kind-lovable.yaml` maps host ports 80 and 443 for easy access.
 
 **Additional documentation:**
 
 - 📄 [Feature Overview & API Summary](diagrams/Lovable_Clone.pdf) — Core features, API endpoints, Stripe payments, quota management, and rate limiting.
-- 📄 [Detailed Microservice Architecture Reference](diagrams/Distributed_Lovable_Architecture.pdf) — Service responsibilities, dependencies, entities, security model, Feign clients, and 6-step K8s deployment guide.
+- 📄 [Detailed Microservice Architecture Reference](diagrams/Distributed_Lovable_Architecture.pdf) — Service responsibilities, dependencies, entities, security model, Feign clients, and K8s deployment guide.
 - 📄 [Complete API Endpoint Reference](diagrams/APIs_Lovable_Clone_Project_.pdf) — Full REST API documentation with request/response examples.
 
 ---
@@ -179,7 +244,7 @@ All deployments use GitHub Actions with OIDC (OpenID Connect) authentication for
 - **Chat History** — Persistent conversation history per project, stored in PostgreSQL.
 - **Event-Driven Architecture** — Kafka-based async file storage and inter-service communication.
 - **Git-Backed Configuration** — Centralized config management via Spring Cloud Config Server with Git as the source of truth.
-- **Passwordless CI/CD** — GitHub Actions OIDC authentication for secure, credential-free GKE deployments.
+- **Automated CI/CD** — GitHub Actions automatically build and push Docker images to Docker Hub on every push to `main`.
 - **Service Discovery** — Netflix Eureka for dynamic microservice registration and discovery.
 - **JWT-Based Security** — Stateless authentication with shared secret validation across all services.
 
@@ -228,7 +293,7 @@ All deployments use GitHub Actions with OIDC (OpenID Connect) authentication for
 | MinIO | latest | Object storage (S3-compatible) |
 | Redis | 8.10 | Caching, preview URL mapping |
 | Apache Kafka | 4.0.0 | Event streaming |
-| Kubernetes | kind/GKE | Container orchestration |
+| Kubernetes | kind | Container orchestration |
 | NGINX Ingress | — | Reverse proxy, SSL termination |
 
 ### CI/CD
@@ -237,9 +302,8 @@ All deployments use GitHub Actions with OIDC (OpenID Connect) authentication for
 |---|---|
 | GitHub Actions | Workflow automation |
 | Docker Hub | Container registry |
-| Jib | Buildpackless Docker builds |
-| GKE | Managed Kubernetes |
-| GitHub OIDC / Workload Identity | Passwordless authentication |
+| Jib | Buildpackless Docker builds (backend services) |
+| Docker Buildx | Docker builds (frontend and proxy) |
 
 ---
 
