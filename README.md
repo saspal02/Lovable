@@ -15,6 +15,7 @@ Describe what you want to build in natural language — Lovable generates, deplo
 ## Table of Contents
 
 - [Overview](#overview)
+- [Demo](#demo)
 - [Architecture](#architecture)
   - [System Architecture](#system-architecture)
   - [Code Generation vs Code Execution](#code-generation-vs-code-execution)
@@ -44,6 +45,13 @@ Describe what you want to build in natural language — Lovable generates, deplo
 **Lovable** is a full-stack AI-powered application generation platform built as a distributed microservices system. Users describe applications in natural language through an interactive chat interface, and the platform's AI engine generates complete web applications — including HTML, CSS, and JavaScript — that are immediately deployable as live previews on Kubernetes.
 
 The platform supports multi-user collaboration, subscription-based billing via Stripe, token usage tracking, and event-driven file storage. It is designed from the ground up for cloud-native deployment with Kubernetes, service discovery, and CI/CD via GitHub Actions that automatically build and push Docker images to Docker Hub.
+
+### Demo
+
+<video controls width="100%">
+  <source src="docs/lovable-demo.webm" type="video/webm">
+  Your browser does not support the video tag.
+</video>
 
 ---
 
@@ -82,7 +90,7 @@ Lovable follows a microservices architecture with six Spring Boot services, a Re
 
 ---
 
-### Code Generation vs Code Execution
+## Code Generation and Code Execution
 
 Lovable is architecturally divided into two distinct domains: **Code Generation** and **Code Execution**. These two domains are implemented by separate microservices with clear responsibilities, enabling independent scaling and evolution.
 
@@ -99,8 +107,6 @@ The **Intelligence Service** (Port 8083) is the brain of the platform. It handle
 - **Token Tracking** — Logs token consumption per message for usage monitoring and quota enforcement.
 - **Auth Header Propagation** — Passes the user's `Authorization` header through to Workspace Service internal calls, ensuring proper permission checks during context assembly.
 
-**Key classes:** `ChatController.java` (SSE endpoint), `AiGenerationServiceImpl.java` (LLM orchestration), `ChatSessionRepository.java`, `ChatMessageRepository.java`.
-
 #### Code Execution — Workspace Service
 
 The **Workspace Service** (Port 8082) is the engine that makes generated code runnable. It handles everything related to project management, file storage, and live preview deployment:
@@ -115,7 +121,6 @@ The **Workspace Service** (Port 8082) is the engine that makes generated code ru
 - **Preview Status API** — Exposes `GET /projects/{id}/preview-status` endpoint that returns the pod's current status (`CREATING`, `RUNNING`, `FAILED`, `TERMINATED`), enabling the frontend to poll and display real-time preview readiness.
 - **Multi-User Collaboration** — Manages project members with role-based access (EDITOR/VIEWER) via the `ProjectMember` entity.
 
-**Key classes:** `ProjectController.java` (project CRUD), `FileController.java` (file tree operations), `DeploymentService.java` (K8s pod management), `ProjectMemberController.java` (collaboration), `FileStorageConsumer.java` (Kafka consumer).
 
 #### How They Work Together
 
