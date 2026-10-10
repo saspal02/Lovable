@@ -17,12 +17,14 @@ import com.saswat.lovable.workspace_service.mapper.ProjectMapper;
 import com.saswat.lovable.workspace_service.repository.ProjectMemberRepository;
 import com.saswat.lovable.workspace_service.repository.ProjectRepository;
 import com.saswat.lovable.workspace_service.security.SecurityExpressions;
+import com.saswat.lovable.workspace_service.service.DeploymentService;
 import com.saswat.lovable.workspace_service.service.ProjectService;
 import com.saswat.lovable.workspace_service.service.ProjectTemplateService;
 import jakarta.transaction.Transactional;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +35,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
 @Transactional
+@Slf4j
 public class ProjectServiceImpl implements ProjectService {
 
     ProjectRepository projectRepository;
@@ -42,6 +45,7 @@ public class ProjectServiceImpl implements ProjectService {
     ProjectTemplateService projectTemplateService;
     AccountClient accountClient;
     SecurityExpressions securityExpressions;
+    DeploymentService deploymentService;
 
     @Override
     public ProjectResponse createProject(ProjectRequest request) {
@@ -108,8 +112,13 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @PreAuthorize("@security.canDeleteProject(#projectId)")
     public void softDelete(Long projectId) {
-        Long userId = authUtil.getCurrentUserId();
-        Project project = getAccessibleProjectById(projectId, userId);
+        Project project = getAccessibleProjectById(projectId, authUtil.getCurrentUserId());
+
+        try {
+            deploymentService.terminatePreview(projectId);
+        } catch (Exception e) {
+            log.warn("Failed to terminate preview for deleted project {}", projectId, e);
+        }
 
         project.setDeletedAt(Instant.now());
         projectRepository.save(project);

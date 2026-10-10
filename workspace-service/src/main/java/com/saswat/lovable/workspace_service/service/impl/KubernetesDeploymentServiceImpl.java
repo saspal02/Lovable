@@ -1,6 +1,11 @@
 package com.saswat.lovable.workspace_service.service.impl;
 
+import com.saswat.lovable.common_lib.dto.PlanDto;
+import com.saswat.lovable.common_lib.error.BadRequestException;
+import com.saswat.lovable.common_lib.security.AuthUtil;
+import com.saswat.lovable.workspace_service.client.AccountClient;
 import com.saswat.lovable.workspace_service.dto.project.DeployResponse;
+import com.saswat.lovable.workspace_service.repository.ProjectMemberRepository;
 import com.saswat.lovable.workspace_service.service.DeploymentService;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -13,6 +18,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -23,6 +32,9 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
 
     private final KubernetesClient client;
     private final StringRedisTemplate redisTemplate;
+    private final AccountClient accountClient;
+    private final AuthUtil authUtil;
+    private final ProjectMemberRepository projectMemberRepository;
 
     @Value("${app.preview.namespace}")
     private String namespace;
@@ -55,7 +67,43 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             return new DeployResponse(formattedUrl);
         }
 
+        enforcePreviewQuota(projectId);
+
         return claimAndStartNewPod(projectId, domain, formattedUrl);
+    }
+
+    private void enforcePreviewQuota(Long projectId) {
+        Long userId = authUtil.getCurrentUserId();
+        PlanDto plan = accountClient.getCurrentSubscribedPlanByUser();
+        if (userId == null || plan.maxPreviews() == null) {
+            return;
+        }
+
+        Set<Long> ownedProjectIds = new HashSet<>(projectMemberRepository.findOwnedProjectIdsByUser(userId));
+        long livePreviews = client.pods().inNamespace(namespace)
+                .withLabel(POOL_LABEL, BUSY)
+                .list().getItems().stream()
+                .map(pod -> pod.getMetadata().getLabels().get(PROJECT_LABEL))
+                .filter(Objects::nonNull)
+                .filter(label -> !label.equals(projectId.toString()))
+                .map(this::parseProjectId)
+                .filter(Objects::nonNull)
+                .filter(ownedProjectIds::contains)
+                .distinct()
+                .count();
+
+        if (livePreviews >= plan.maxPreviews()) {
+            throw new BadRequestException("Free plan allows only " + plan.maxPreviews()
+                    + " live previews. Upgrade your plan for more.");
+        }
+    }
+
+    private Long parseProjectId(String label) {
+        try {
+            return Long.parseLong(label);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private Pod findActivePod(Long projectId) {
@@ -113,6 +161,21 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
 
         redisTemplate.opsForValue().set("route:" + domain, podIp + ":5173", 6, TimeUnit.HOURS);
         log.info("Route Registered: {} -> {}", domain, podIp);
+    }
+
+    @Override
+    public void terminatePreview(Long projectId) {
+        String domain = "project-" + projectId + "." + baseDomain;
+        redisTemplate.delete("route:" + domain);
+
+        List<Pod> pods = client.pods().inNamespace(namespace)
+                .withLabel(PROJECT_LABEL, projectId.toString())
+                .list().getItems();
+        for (Pod pod : pods) {
+            String podName = pod.getMetadata().getName();
+            log.info("Terminating preview pod {} for project {}", podName, projectId);
+            client.pods().inNamespace(namespace).withName(podName).delete();
+        }
     }
 
     private void execCommand(String podName, String container, String... command) {
