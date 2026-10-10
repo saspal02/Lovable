@@ -197,7 +197,7 @@ The `pgvector` extension is available for potential semantic search and embeddin
 
 The project uses GitHub Actions for continuous integration. Each service has a dedicated workflow that automatically builds and pushes Docker images to Docker Hub on every push to the `main` branch.
 
-![CI/CD Pipeline](docs/ci_cd_pipeline.png)
+![CI/CD Pipeline](docs/GCE_Authentication.png)
 
 **Build workflow (per service):**
 
