@@ -37,6 +37,26 @@ export const ACTIVE_TAB_KEY = "active_tab";
 // never leak across projects.
 export const getPreviewUrlKey = (projectId: string) => `${PREVIEW_URL_KEY}_${projectId}`;
 
+async function extractErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) {
+      return fallback;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed.message === "string" && parsed.message) {
+        return parsed.message;
+      }
+    } catch {
+      return text;
+    }
+  } catch {
+    // fall through to default message
+  }
+  return fallback;
+}
+
 // API response format for files endpoint
 interface FilesApiResponse {
   files: { path: string }[];
@@ -168,7 +188,7 @@ export const api = {
     });
 
     if (!response.ok) {
-      throw new Error("Deployment failed");
+      throw new Error(await extractErrorMessage(response, "Deployment failed"));
     }
 
     const text = await response.text();

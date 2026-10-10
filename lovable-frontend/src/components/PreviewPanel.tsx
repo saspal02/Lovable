@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Play, Loader2, ExternalLink, RefreshCw, Globe } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Play, Loader2, ExternalLink, RefreshCw, Globe, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, getPreviewUrlKey, PREVIEW_URL_KEY } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -30,16 +30,44 @@ function loadPreviewUrl(projectId: string): string | null {
   return null;
 }
 
+// Post-deploy reload schedule. Vite needs minutes for npm install + boot,
+// so remount the iframe a few times before giving up to manual refresh.
+const RETRY_DELAYS_MS = [10000, 20000, 30000, 45000, 60000, 90000];
+
 export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: PreviewPanelProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(() => loadPreviewUrl(projectId));
   const [isDeploying, setIsDeploying] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
+  const [autoRetrying, setAutoRetrying] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const retryTimerRef = useRef<number | null>(null);
   const { toast } = useToast();
+
+  const clearRetryTimer = () => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  };
+
+  const stopAutoRetry = useCallback(() => {
+    clearRetryTimer();
+    setAutoRetrying(false);
+  }, []);
+
+  const startAutoRetry = useCallback(() => {
+    clearRetryTimer();
+    setRetryCount(0);
+    setAutoRetrying(true);
+  }, []);
 
   // Reload the stored URL when switching projects so one project's
   // preview is never framed inside another project.
   useEffect(() => {
+    stopAutoRetry();
     setPreviewUrl(loadPreviewUrl(projectId));
-  }, [projectId]);
+  }, [projectId, stopAutoRetry]);
 
   // Store previewUrl under the per-project key when it changes
   useEffect(() => {
@@ -48,15 +76,35 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
     }
   }, [previewUrl, projectId]);
 
+  // Bounded blind-retry schedule: the preview is cross-origin, so its HTTP
+  // status can't be read. After a deploy the pod needs minutes for
+  // npm install + vite boot, so remount the iframe a few times, then stop.
+  useEffect(() => {
+    if (!autoRetrying) return;
+    if (retryCount >= RETRY_DELAYS_MS.length) {
+      setAutoRetrying(false);
+      return;
+    }
+    retryTimerRef.current = window.setTimeout(() => {
+      setIframeKey((key) => key + 1);
+      setRetryCount((count) => count + 1);
+    }, RETRY_DELAYS_MS[retryCount]);
+    return clearRetryTimer;
+  }, [autoRetrying, retryCount]);
+
+  // Never leak timers across unmounts
+  useEffect(() => clearRetryTimer, []);
+
   const handleDeploy = async () => {
     setIsDeploying(true);
 
     try {
       const response = await api.deploy(projectId);
       setPreviewUrl(response.previewUrl);
+      startAutoRetry();
       toast({
         title: "Deployment successful",
-        description: "Your preview is now ready",
+        description: "Preview is starting — it reloads automatically",
       });
     } catch (error) {
       toast({
@@ -69,10 +117,14 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
     }
   };
 
+  const reloadIframe = () => setIframeKey((key) => key + 1);
+
   const handleRefresh = () => {
-    const iframe = document.querySelector("iframe");
-    if (iframe) {
-      iframe.src = iframe.src;
+    stopAutoRetry();
+    if (iframeRef.current) {
+      iframeRef.current.src = previewUrl ?? "";
+    } else {
+      reloadIframe();
     }
   };
 
@@ -132,9 +184,32 @@ export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: Prev
       </div>
 
       {/* Preview Area */}
-      <div className="flex-1 bg-[#1a1a1a]">
+      <div className="flex-1 bg-[#1a1a1a] relative">
+        {autoRetrying && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/95 border border-border/50 shadow-lg text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin text-primary" />
+            <span>
+              Starting preview… retry {Math.min(retryCount + 1, RETRY_DELAYS_MS.length)}/{RETRY_DELAYS_MS.length}
+            </span>
+            <button
+              onClick={reloadIframe}
+              className="font-medium text-primary hover:underline"
+            >
+              Refresh now
+            </button>
+            <button
+              onClick={stopAutoRetry}
+              className="hover:text-foreground"
+              aria-label="Stop automatic retries"
+            >
+              <Square className="w-3 h-3" />
+            </button>
+          </div>
+        )}
         {previewUrl ? (
           <iframe
+            key={iframeKey}
+            ref={iframeRef}
             src={previewUrl}
             className="w-full h-full border-0"
             title="Preview"
