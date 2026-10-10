@@ -1,6 +1,6 @@
 import { ChatMessage, DeployResponse, FileNode, LoginCredentials, LoginResponse, ProjectSummaryResponse, ProjectRequest, ProjectResponse, ProjectMember, ProjectRole, SignupRequest, AuthResponse } from "./types";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://api.codingshuttle.in";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 export const getAuthToken = () => localStorage.getItem("auth_token");
 
@@ -166,7 +166,12 @@ export const api = {
       throw new Error("Deployment failed");
     }
 
-    return response.json();
+    const text = await response.text();
+    if (!text) {
+      throw new Error("Deployment failed: empty response from server");
+    }
+
+    return JSON.parse(text);
   },
 
 
