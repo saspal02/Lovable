@@ -1,44 +1,27 @@
-# syntax=docker/dockerfile:1
-
-ARG NODE_VERSION=20-alpine
-ARG NGINX_VERSION=alpine
-
-# ---------- Stage 1: compile the SPA ----------
-FROM node:${NODE_VERSION} AS build
-
+# Stage 1: Build the React App
+FROM node:22-alpine AS build
 WORKDIR /app
-
-# Vite inlines VITE_* at build time, so this must be set before `npm run build`.
-ARG VITE_API_URL=http://api.lovable.in
-ENV VITE_API_URL=${VITE_API_URL}
-
-# There is no committed lockfile, so `npm ci` is unavailable here.
-COPY package.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm install --no-fund --no-audit && npm cache clean --force
-
+COPY package*.json ./
+RUN npm install
 COPY . .
-
+ARG VITE_API_URL=http://api.35.200.131.22.nip.io
+ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
-# ---------- Stage 2: serve the static output ----------
-FROM nginx:${NGINX_VERSION} AS runtime
-
-LABEL org.opencontainers.image.title="lovable-frontend" \
-      org.opencontainers.image.description="Lovable web client: AI pair programming workspace" \
-      org.opencontainers.image.source="https://github.com/saspal02/vibe-coding-platform" \
-      org.opencontainers.image.licenses="UNLICENSED"
-
-RUN rm /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
+# Stage 2: Serve with NGINX
+FROM nginx:alpine
+# Copy the built Vite assets to NGINX's serving directory
 COPY --from=build /app/dist /usr/share/nginx/html
 
+# Add a custom NGINX config to handle React Router (SPA routing)
+RUN echo 'server { \
+    listen 80; \
+    location / { \
+        root /usr/share/nginx/html; \
+        index index.html index.htm; \
+        try_files $uri $uri/ /index.html; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
+
 EXPOSE 80
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://127.0.0.1/healthz || exit 1
-
-STOPSIGNAL SIGQUIT
-
 CMD ["nginx", "-g", "daemon off;"]

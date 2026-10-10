@@ -1,5 +1,4 @@
 # k8s/infra/preview-network-policies.yaml
-# Ported verbatim from tutorial 427e3a44 (no domain references to adapt).
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

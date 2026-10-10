@@ -4,7 +4,7 @@
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6db33f?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![React](https://img.shields.io/badge/React-18.3-61dafb?logo=react&logoColor=black)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-kind-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-GKE-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18%20pgvector-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 
@@ -113,7 +113,7 @@ The **Workspace Service** (Port 8082) is the engine that makes generated code ru
 - **Kafka Consumer** — Listens for file storage events published by the Intelligence Service after AI generation. Consumes the event, parses the generated files, and stores them in MinIO.
 - **Preview Deployment** — When a user triggers a deployment (`POST /projects/{id}/deploy`), the service uses the Fabric8 Kubernetes Client (`DeploymentService.java`) to create an isolated pod with runner and syncer containers.
 - **Runner Pod Lifecycle** — Manages the full lifecycle of preview pods: creation, status monitoring, and cleanup. Each pod serves the generated files via an HTTP server. Supports pod resumption for existing deployments.
-- **Pre-baked Runner Image** — Uses a custom Docker image (`saspal02/lovable-runner`) with common npm dependencies (React, Vite, Tailwind, etc.) pre-installed at `/opt/prebake`, significantly reducing preview startup time.
+- **Runner Image** — Uses the stock `node:22-alpine` image for preview pods.
 - **Serialized npm Installs** — Uses file-based locking (`/tmp/preview-install.lock`) to prevent concurrent `npm install` operations within a pod, avoiding race conditions when files update rapidly.
 - **Preview Status API** — Exposes `GET /projects/{id}/preview-status` endpoint that returns the pod's current status (`CREATING`, `RUNNING`, `FAILED`, `TERMINATED`), enabling the frontend to poll and display real-time preview readiness.
 - **Multi-User Collaboration** — Manages project members with role-based access (EDITOR/VIEWER) via the `ProjectMember` entity.
@@ -175,7 +175,7 @@ Each project's live preview runs in an isolated Kubernetes pod, ensuring complet
 **Architecture details:**
 
 - **Runner Pod** — When a project is deployed (`POST /projects/{id}/deploy`), the Workspace Service creates a dedicated Kubernetes pod containing two containers:
-  - **Runner container**: Uses a pre-baked image (`saspal02/lovable-runner:1`) with common npm dependencies (React, Vite, Tailwind, Radix UI, etc.) pre-installed at `/opt/prebake/node_modules`. On startup, it copies these pre-baked dependencies, then runs `npm install` to add any project-specific packages. This reduces cold-start time significantly.
+  - **Runner container**: Uses the stock `node:22-alpine` image. On startup, it runs `npm install` to add project dependencies.
   - **Syncer container**: Uses `pgsty/mc:latest` to fetch the latest files from MinIO via `mc mirror --watch`, keeping the runner's file system synchronized in real time.
   - **Dependency Resolution** — The runner uses file-based locking to serialize `npm install` operations, preventing race conditions. It also watches for `package.json` changes and auto-reinstalls dependencies when new packages are added by the AI.
   - **Reverse Proxy** — A dedicated proxy service (`lovable-me-proxy`) routes incoming preview requests to the correct runner pod based on the subdomain. Returns HTTP 503 with `Retry-After: 10` header when a preview is still starting.
@@ -230,10 +230,9 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 | `deploy-config-service.yaml` | Config Service | Jib |
 | `deploy-frontend.yaml` | Frontend | Docker Buildx |
 | `deploy-intelligence-service.yaml` | Intelligence Service | Jib |
-| `deploy-proxy.yaml` | Preview Proxy | Docker Buildx |
 | `deploy-workspace-service.yaml` | Workspace Service | Jib |
 
-**Deployment to local cluster:** After images are pushed to Docker Hub, deploy them to a local kind cluster using `kubectl apply` with the manifests in `k8s/`. The cluster configuration at `k8s/kind/kind-lovable.yaml` maps host ports 80 and 443 for easy access.
+**Deployment to GKE:** After images are pushed to Docker Hub, deploy them to GKE using `kubectl apply` with the manifests in `k8s/`.
 
 **Additional documentation:**
 
@@ -246,7 +245,7 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 ## Key Features
 
 - **AI-Powered Code Generation** — Natural language to production-ready code with real-time streaming responses via Server-Sent Events.
-- **Live Preview Deployments** — Each project gets an isolated Kubernetes pod with a unique subdomain for instant preview. Uses a pre-baked runner image with common npm dependencies for faster cold starts.
+- **Live Preview Deployments** — Each project gets an isolated Kubernetes pod with a unique subdomain for instant preview.
 - **Multi-User Collaboration** — Invite team members to projects with role-based access control (EDITOR/VIEWER).
 - **Stripe Subscription Billing** — Integrated payment processing with FREE (10 projects, 50K tokens) and PRO plans, checkout sessions, and customer portal.
 - **Token Usage Tracking** — Per-user token consumption logging with plan-based quota enforcement.
@@ -303,7 +302,7 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 | MinIO | latest | Object storage (S3-compatible) |
 | Redis | 8.10 | Caching, preview URL mapping |
 | Apache Kafka | 4.0.0 | Event streaming |
-| Kubernetes | kind | Container orchestration |
+| Kubernetes | GKE | Container orchestration |
 | NGINX Ingress | — | Reverse proxy, SSL termination |
 
 ### CI/CD
@@ -405,10 +404,9 @@ All public endpoints are accessed through the API Gateway at `api.lovable.in`. I
 
 - **Java 25** (Temurin recommended)
 - **Maven 3.9+** (or use bundled `mvnw`)
-- **Node.js 18+** with npm
+- **Node.js 22+** with npm
 - **Docker & Docker Compose** — for local infrastructure services
-- **kubectl** — for Kubernetes interactions (optional, for local K8s testing)
-- **kind** — for local Kubernetes cluster (optional)
+- **kubectl** — for Kubernetes interactions
 
 ### Installation
 
@@ -525,7 +523,7 @@ cd lovable-frontend && npm run build
 
 ### Kubernetes Deployment
 
-The project includes complete Kubernetes manifests in the `k8s/` directory for deployment to any K8s cluster (kind, GKE, etc.).
+The project includes complete Kubernetes manifests in the `k8s/` directory for deployment to GKE.
 
 #### 1. Create Namespaces
 
@@ -602,9 +600,7 @@ lovable/
 │   ├── infra/                # Namespaces, ingress, network policies, runner pool
 │   ├── services/             # Deployment manifests for each microservice
 │   ├── proxy/                # Preview reverse proxy configuration
-│   ├── runner/               # Runner pod templates
 │   ├── stateful/             # StatefulSet definitions
-│   └── kind/                 # Kind cluster configuration
 ├── docs/                     # Architecture diagrams, PDFs, and demo video
 ├── .github/workflows/        # GitHub Actions CI/CD workflows
 ├── docker-compose.yml        # Local infrastructure (PostgreSQL, MinIO, Redis, Kafka)

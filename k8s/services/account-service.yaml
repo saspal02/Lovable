@@ -50,11 +50,11 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: STRIPE_WEBHOOK_SECRET
-            - name: FRONTEND_URL
+            - name: APP_FRONTEND_URL
               valueFrom:
                 configMapKeyRef:
                   name: lovable-shared-config
-                  key: FRONTEND_URL
+                  key: APP_FRONTEND_URL
           resources:
             requests:
               cpu: 100m

@@ -19,30 +19,28 @@ spec:
         - name: workspace
           emptyDir: {}
       containers:
-        # 1. THE RUNNER (Vite / Node.js, template deps pre-baked at /opt/prebake)
+        # 1. THE RUNNER (Vite / Node.js)
         - name: runner
-          image: saspal02/lovable-runner:1
-          imagePullPolicy: IfNotPresent
+          image: node:20-alpine
           workingDir: /app
           command: ["/bin/sh", "-c", "sleep infinity"]
           volumeMounts:
             - name: workspace
               mountPath: /app
-            # - name: pnpm-store
-            #   mountPath: /root/.local/share/pnpm
           ports:
             - containerPort: 5173
           resources:
             requests:
               memory: "512Mi"
-              cpu: "500m"
+              cpu: "250m"
             limits:
-              memory: "2Gi"
-              cpu: "2000m"
+              memory: "1Gi"
+              cpu: "500m"
 
         # 2. THE SYNCER (MinIO mc)
         - name: syncer
           image: pgsty/mc:latest
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c", "sleep infinity"]
           env:
             - name: MINIO_USER

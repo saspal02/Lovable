@@ -1,7 +1,6 @@
 package com.saswat.lovable.workspace_service.controller;
 
 import com.saswat.lovable.workspace_service.dto.project.DeployResponse;
-import com.saswat.lovable.workspace_service.dto.project.PreviewStatusResponse;
 import com.saswat.lovable.workspace_service.dto.project.ProjectRequest;
 import com.saswat.lovable.workspace_service.dto.project.ProjectResponse;
 import com.saswat.lovable.workspace_service.dto.project.ProjectSummaryResponse;
@@ -11,7 +10,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -53,12 +51,6 @@ public class ProjectController {
     @PostMapping("/{id}/deploy")
     public ResponseEntity<DeployResponse> deployProject(@PathVariable Long id) {
         return ResponseEntity.ok(deploymentService.deploy(id));
-    }
-
-    @GetMapping("/{id}/preview-status")
-    @PreAuthorize("@security.canViewProject(#id)")
-    public ResponseEntity<PreviewStatusResponse> getPreviewStatus(@PathVariable Long id) {
-        return ResponseEntity.ok(deploymentService.getStatus(id));
     }
 
 }

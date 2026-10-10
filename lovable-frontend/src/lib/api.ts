@@ -1,4 +1,4 @@
-import { ChatMessage, DeployResponse, PreviewStatusResponse, FileNode, LoginCredentials, LoginResponse, ProjectSummaryResponse, ProjectRequest, ProjectResponse, ProjectMember, ProjectRole, SignupRequest, AuthResponse } from "./types";
+import { ChatMessage, DeployResponse, FileNode, LoginCredentials, LoginResponse, ProjectSummaryResponse, ProjectRequest, ProjectResponse, ProjectMember, ProjectRole, SignupRequest, AuthResponse } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://api.codingshuttle.in";
 
@@ -169,21 +169,6 @@ export const api = {
     return response.json();
   },
 
-  async getPreviewStatus(projectId: string): Promise<PreviewStatusResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${projectId}/preview-status`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      throw new Error(`Preview status forbidden: ${response.status}`);
-    }
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch preview status");
-    }
-
-    return response.json();
-  },
 
   async getProjects(): Promise<ProjectSummaryResponse[]> {
     const response = await fetch(`${BASE_URL}/api/v1/workspace/projects`, {

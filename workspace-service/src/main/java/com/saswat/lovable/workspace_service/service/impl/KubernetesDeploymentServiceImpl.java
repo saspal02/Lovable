@@ -1,8 +1,6 @@
 package com.saswat.lovable.workspace_service.service.impl;
 
-import com.saswat.lovable.common_lib.enums.PreviewStatus;
 import com.saswat.lovable.workspace_service.dto.project.DeployResponse;
-import com.saswat.lovable.workspace_service.dto.project.PreviewStatusResponse;
 import com.saswat.lovable.workspace_service.service.DeploymentService;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -15,9 +13,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -29,78 +24,38 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
     private final KubernetesClient client;
     private final StringRedisTemplate redisTemplate;
 
-    @Value("${app.preview.namespace:lovable-previews}")
+    @Value("${app.preview.namespace}")
     private String namespace;
 
-    @Value("${app.preview.domain:previews.lovable.in}")
+    @Value("${app.preview.domain}")
     private String baseDomain;
 
-    @Value("${app.preview.proxy-port:80}")
+    @Value("${app.preview.proxy-port}")
     private String proxyPort;
 
     private static final String POOL_LABEL = "status";
     private static final String PROJECT_LABEL = "project-id";
     private static final String IDLE = "idle";
     private static final String BUSY = "busy";
-    private static final int TCP_PROBE_TIMEOUT_MS = 2000;
-    private static final String INSTALL_LOCK_DIR = "/tmp/preview-install.lock";
 
     public DeployResponse deploy(Long projectId) {
-        String domain = previewDomain(projectId);
-        String formattedUrl = previewUrl(domain);
+        // Dynamically build the domain: project-123.app.domain.com
+        String domain = "project-" + projectId + "." + baseDomain;
+
+        // Use default port 80 format logic for clean URLs, or explicit ports for local testing
+        String formattedUrl = proxyPort.equals("80")
+                ? "http://" + domain
+                : "http://" + domain + ":" + proxyPort;
 
         Pod existingPod = findActivePod(projectId);
 
         if (existingPod != null) {
             log.info("Found existing pod {} for project {}. Resuming...", existingPod.getMetadata().getName(), projectId);
-            execCommand(existingPod.getMetadata().getName(), "runner", "sh", "-c", refreshCmd());
             registerRoute(domain, existingPod);
             return new DeployResponse(formattedUrl);
         }
 
         return claimAndStartNewPod(projectId, domain, formattedUrl);
-    }
-
-    @Override
-    public PreviewStatusResponse getStatus(Long projectId) {
-        String domain = previewDomain(projectId);
-        String target = redisTemplate.opsForValue().get("route:" + domain);
-        if (target == null) {
-            return new PreviewStatusResponse(PreviewStatus.TERMINATED, previewUrl(domain));
-        }
-        boolean reachable = isReachable(target);
-        PreviewStatus status = reachable ? PreviewStatus.RUNNING : PreviewStatus.CREATING;
-        return new PreviewStatusResponse(status, previewUrl(domain));
-    }
-
-    private String previewDomain(Long projectId) {
-        return "project-" + projectId + "." + baseDomain;
-    }
-
-    private String previewUrl(String domain) {
-        if (proxyPort.equals("80")) {
-            return "http://" + domain;
-        }
-        return "http://" + domain + ":" + proxyPort;
-    }
-
-    private boolean isReachable(String target) {
-        String[] parts = target.split(":");
-        if (parts.length != 2) {
-            return false;
-        }
-        int port;
-        try {
-            port = Integer.parseInt(parts[1]);
-        } catch (NumberFormatException e) {
-            return false;
-        }
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(parts[0], port), TCP_PROBE_TIMEOUT_MS);
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     private Pod findActivePod(Long projectId) {
@@ -136,13 +91,13 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             String watchCmd = String.format("nohup mc mirror --overwrite --watch myminio/projects/%d/ /app/ > /app/sync.log 2>&1 &", projectId);
             execCommand(podName, "syncer", "sh", "-c", watchCmd);
 
-            String startCmd = initialStartCmd();
+            String startCmd = "npm install && nohup npm run dev -- --host 0.0.0.0 --port 5173 > /app/dev.log 2>&1 &";
             execCommand(podName, "runner", "sh", "-c", startCmd);
 
             Pod updatedPod = client.pods().inNamespace(namespace).withName(podName).get();
             registerRoute(domain, updatedPod);
 
-            log.info("[Workspace] - DEPLOY: successful: {}", formattedUrl);
+            log.info("Deployment successful: {}", formattedUrl);
             return new DeployResponse(formattedUrl);
 
         } catch (Exception e) {
@@ -150,30 +105,6 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             client.pods().inNamespace(namespace).withName(podName).delete();
             throw new RuntimeException("Failed to deploy project " + projectId + ": " + e.getMessage(), e);
         }
-    }
-
-    private static String initialStartCmd() {
-        return "(mkdir " + INSTALL_LOCK_DIR + " 2>/dev/null || exit 0; "
-                + "if [ ! -d /app/node_modules ] || [ -z \"$(ls -A /app/node_modules 2>/dev/null)\" ]; then "
-                + "cp -r /opt/prebake/node_modules /app/node_modules 2>/dev/null || true; fi; "
-                + "npm install --no-fund --no-audit --prefix /app >>/app/install.log 2>&1; "
-                + "if [ ! -f /app/node_modules/vite/dist/node/cli.js ]; then "
-                + "npm install --no-fund --no-audit --prefix /app >>/app/install.log 2>&1; fi; "
-                + "cp /app/package.json /tmp/package.last; "
-                + "rmdir " + INSTALL_LOCK_DIR + " 2>/dev/null; "
-                + "if [ -f /app/node_modules/vite/dist/node/cli.js ]; then "
-                + "nohup npm run dev -- --host 0.0.0.0 --port 5173 >/app/dev.log 2>&1 & echo $! > /tmp/dev.pid; fi) &";
-    }
-
-    private static String refreshCmd() {
-        return "(if cmp -s /app/package.json /tmp/package.last 2>/dev/null; then exit 0; fi; "
-                + "mkdir " + INSTALL_LOCK_DIR + " 2>/dev/null || exit 0; "
-                + "npm install --no-fund --no-audit --prefix /app >>/app/install.log 2>&1 "
-                + "&& cp /app/package.json /tmp/package.last; "
-                + "rmdir " + INSTALL_LOCK_DIR + " 2>/dev/null; "
-                + "if [ -f /app/node_modules/vite/dist/node/cli.js ]; then "
-                + "kill $(cat /tmp/dev.pid 2>/dev/null) 2>/dev/null || true; "
-                + "nohup npm run dev -- --host 0.0.0.0 --port 5173 >/app/dev.log 2>&1 & echo $! > /tmp/dev.pid; fi) &";
     }
 
     private void registerRoute(String domain, Pod pod) {
@@ -211,4 +142,6 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             throw new RuntimeException("Pod Execution Failed", e);
         }
     }
+
+
 }
