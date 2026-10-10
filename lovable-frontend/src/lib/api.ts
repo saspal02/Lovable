@@ -32,6 +32,11 @@ export const PREVIEW_URL_KEY = "preview_url";
 export const OPEN_TABS_KEY = "open_tabs";
 export const ACTIVE_TAB_KEY = "active_tab";
 
+// Per-project preview URL key. Preview URLs embed the project id
+// (http://project-<id>.previews.<domain>), so framing a stored URL must
+// never leak across projects.
+export const getPreviewUrlKey = (projectId: string) => `${PREVIEW_URL_KEY}_${projectId}`;
+
 // API response format for files endpoint
 interface FilesApiResponse {
   files: { path: string }[];

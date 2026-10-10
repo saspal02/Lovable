@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Play, Loader2, ExternalLink, RefreshCw, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { api, PREVIEW_URL_KEY } from "@/lib/api";
+import { api, getPreviewUrlKey, PREVIEW_URL_KEY } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 import { RuntimeErrorAlert, RuntimeError } from "@/components/RuntimeErrorAlert";
@@ -13,20 +13,40 @@ interface PreviewPanelProps {
   onFix: (error: RuntimeError) => void;
 }
 
+const isPreviewUrlForProject = (url: string | null, projectId: string): url is string =>
+  !!url && url.includes(`project-${projectId}.`);
+
+function loadPreviewUrl(projectId: string): string | null {
+  const scoped = localStorage.getItem(getPreviewUrlKey(projectId));
+  if (isPreviewUrlForProject(scoped, projectId)) return scoped;
+
+  // One-time adoption of the legacy global key when it belongs to this project
+  const legacy = localStorage.getItem(PREVIEW_URL_KEY);
+  if (isPreviewUrlForProject(legacy, projectId)) {
+    localStorage.setItem(getPreviewUrlKey(projectId), legacy);
+    return legacy;
+  }
+
+  return null;
+}
+
 export function PreviewPanel({ projectId, runtimeError, onDismiss, onFix }: PreviewPanelProps) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(() => {
-    // Load from localStorage on mount
-    return localStorage.getItem(PREVIEW_URL_KEY);
-  });
+  const [previewUrl, setPreviewUrl] = useState<string | null>(() => loadPreviewUrl(projectId));
   const [isDeploying, setIsDeploying] = useState(false);
   const { toast } = useToast();
 
-  // Store previewUrl in localStorage when it changes
+  // Reload the stored URL when switching projects so one project's
+  // preview is never framed inside another project.
   useEffect(() => {
-    if (previewUrl) {
-      localStorage.setItem(PREVIEW_URL_KEY, previewUrl);
+    setPreviewUrl(loadPreviewUrl(projectId));
+  }, [projectId]);
+
+  // Store previewUrl under the per-project key when it changes
+  useEffect(() => {
+    if (previewUrl && isPreviewUrlForProject(previewUrl, projectId)) {
+      localStorage.setItem(getPreviewUrlKey(projectId), previewUrl);
     }
-  }, [previewUrl]);
+  }, [previewUrl, projectId]);
 
   const handleDeploy = async () => {
     setIsDeploying(true);
