@@ -18,8 +18,6 @@ public class CorsConfig {
         corsConfig.setAllowedOriginPatterns(Arrays.asList(
                 "http://localhost:5173",
                 "http://localhost:8080",
-                "http://lovable.in",
-                "http://www.lovable.in",
                 "http://lovable.35.200.131.22.nip.io",
                 "http://www.35.200.131.22.nip.io",
                 "http://api.35.200.131.22.nip.io",

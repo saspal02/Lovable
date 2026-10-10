@@ -1,12 +1,4 @@
-# Lovable — AI-Powered Vibe Coding Platform
-
-[![Java](https://img.shields.io/badge/Java-25-ed8b00?logo=openjdk&logoColor=white)](https://www.oracle.com/java/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6db33f?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![React](https://img.shields.io/badge/React-18.3-61dafb?logo=react&logoColor=black)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-GKE-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18%20pgvector-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
+# Lovable — distributed AI-Powered Vibe Coding Platform
 
 Describe what you want to build in natural language — Lovable generates, deploys, and previews working web applications in real time.
 
@@ -22,21 +14,12 @@ Describe what you want to build in natural language — Lovable generates, deplo
   - [AI Code Generation Flow](#ai-code-generation-flow)
   - [Code Execution Architecture](#code-execution-architecture)
   - [Database Schema](#database-schema)
-  - [CI/CD Pipeline](#ci-cd-pipeline)
+  - [CI/CD Pipeline](#cicd-pipeline)
 - [Key Features](#key-features)
 - [Tech Stack](#tech-stack)
-- [Microservices Overview](#microservices-overview)
-- [API Endpoints](#api-endpoints)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
   - [Environment Variables](#environment-variables)
-- [Running the Project](#running-the-project)
-  - [Local Development](#local-development)
-  - [Kubernetes Deployment](#kubernetes-deployment)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
 
 ---
 
@@ -46,9 +29,13 @@ Describe what you want to build in natural language — Lovable generates, deplo
 
 The platform supports multi-user collaboration, subscription-based billing via Stripe, token usage tracking, and event-driven file storage. It is designed from the ground up for cloud-native deployment with Kubernetes, service discovery, and CI/CD via GitHub Actions that automatically build and push Docker images to Docker Hub.
 
-### Demo
+---
 
-Link- https://youtu.be/B6HJi5CeOBk
+## Demo
+
+Demo video: https://youtu.be/B6HJi5CeOBk
+
+Local demo recording: `docs/lovable-demo.webm`
 
 ---
 
@@ -87,7 +74,7 @@ Lovable follows a microservices architecture with six Spring Boot services, a Re
 
 ---
 
-## Code Generation and Code Execution
+### Code Generation and Code Execution
 
 Lovable is architecturally divided into two distinct domains: **Code Generation** and **Code Execution**. These two domains are implemented by separate microservices with clear responsibilities, enabling independent scaling and evolution.
 
@@ -179,7 +166,7 @@ Each project's live preview runs in an isolated Kubernetes pod, ensuring complet
   - **Syncer container**: Uses `pgsty/mc:latest` to fetch the latest files from MinIO via `mc mirror --watch`, keeping the runner's file system synchronized in real time.
   - **Dependency Resolution** — The runner uses file-based locking to serialize `npm install` operations, preventing race conditions. It also watches for `package.json` changes and auto-reinstalls dependencies when new packages are added by the AI.
   - **Reverse Proxy** — A dedicated proxy service (`lovable-me-proxy`) routes incoming preview requests to the correct runner pod based on the subdomain. Returns HTTP 503 with `Retry-After: 10` header when a preview is still starting.
-  - **Redis URL Mapping** — The mapping between preview subdomains (`{projectId}.previews.lovable.in`) and pod IPs is stored in Redis for fast lookups.
+  - **Redis URL Mapping** — The mapping between preview subdomains (`project-{projectId}.previews.35.200.131.22.nip.io`) and pod IPs is stored in Redis for fast lookups.
   - **Resource Limits** — Runner pods are configured with higher CPU limits (up to 2000m) and memory limits (2Gi) to handle npm installs and Vite dev server efficiently.
   - **Network Policies** — Kubernetes network policies isolate preview pods from the core services, ensuring security boundaries.
   - **Preview Status Polling** — The frontend polls `GET /projects/{id}/preview-status` every 5 seconds (up to 10 minutes) to display real-time preview readiness, showing a loading state while the pod starts and notifying the user if the preview terminates.
@@ -231,6 +218,7 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 | `deploy-frontend.yaml` | Frontend | Docker Buildx |
 | `deploy-intelligence-service.yaml` | Intelligence Service | Jib |
 | `deploy-workspace-service.yaml` | Workspace Service | Jib |
+| `deploy-proxy.yaml` | Preview Proxy | Docker Buildx |
 
 **Deployment to GKE:** After images are pushed to Docker Hub, deploy them to GKE using `kubectl apply` with the manifests in `k8s/`.
 
@@ -263,47 +251,47 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 
 ### Backend
 
-| Technology | Version | Purpose |
-|---|---|---|
-| Java | 25 | Runtime language |
-| Spring Boot | 4.1.0 | Application framework |
-| Spring Cloud | 2025.1.3 | Gateway, Config, Eureka |
-| Spring AI | 2.0.1 | LLM integration |
-| Spring Security | — | JWT authentication |
-| Spring Data JPA | — | Database access |
-| Spring Kafka | — | Event-driven messaging |
-| MapStruct | 1.6.3 | DTO-entity mapping |
-| Lombok | — | Boilerplate reduction |
-| Fabric8 Kubernetes Client | — | K8s pod management |
-| Stripe Java SDK | 33.4.0 | Payment processing |
-| Jib Maven Plugin | 3.5.2 | Docker image builds |
+| Technology | Purpose |
+|---|---|
+| Java | Runtime language |
+| Spring Boot | Application framework |
+| Spring Cloud | Gateway, Config, Eureka |
+| Spring AI | LLM integration |
+| Spring Security | JWT authentication |
+| Spring Data JPA | Database access |
+| Spring Kafka | Event-driven messaging |
+| MapStruct | DTO-entity mapping |
+| Lombok | Boilerplate reduction |
+| Fabric8 Kubernetes Client | K8s pod management |
+| Stripe Java SDK | Payment processing |
+| Jib Maven Plugin | Docker image builds |
 
 ### Frontend
 
-| Technology | Version | Purpose |
-|---|---|---|
-| React | 18.3.1 | UI framework |
-| TypeScript | 5.8.3 | Type safety |
-| Vite | 5.4.19 | Build tool |
-| Tailwind CSS | 3.4.17 | Utility-first styling |
-| Radix UI | — | Accessible component primitives |
-| CodeMirror | — | Syntax-highlighted code editor |
-| React Router | 6.30.1 | Client-side routing |
-| TanStack Query | 5.83.0 | Server state management |
-| React Hook Form | 7.61.1 | Form handling |
-| Zod | 3.25.76 | Schema validation |
-| Vitest | 3.2.4 | Testing framework |
+| Technology | Purpose |
+|---|---|
+| React | UI framework |
+| TypeScript | Type safety |
+| Vite | Build tool |
+| Tailwind CSS | Utility-first styling |
+| Radix UI | Accessible component primitives |
+| CodeMirror | Syntax-highlighted code editor |
+| React Router | Client-side routing |
+| TanStack Query | Server state management |
+| React Hook Form | Form handling |
+| Zod | Schema validation |
+| Vitest | Testing framework |
 
 ### Infrastructure
 
-| Technology | Version | Purpose |
-|---|---|---|
-| PostgreSQL | 18 + pgvector | Relational database |
-| MinIO | latest | Object storage (S3-compatible) |
-| Redis | 8.10 | Caching, preview URL mapping |
-| Apache Kafka | 4.0.0 | Event streaming |
-| Kubernetes | GKE | Container orchestration |
-| NGINX Ingress | — | Reverse proxy, SSL termination |
+| Technology | Purpose |
+|---|---|
+| PostgreSQL | Relational database |
+| MinIO | Object storage (S3-compatible) |
+| Redis | Caching, preview URL mapping |
+| Apache Kafka | Event streaming |
+| Kubernetes | Container orchestration |
+| NGINX Ingress | Reverse proxy, SSL termination |
 
 ### CI/CD
 
@@ -316,89 +304,9 @@ The project uses GitHub Actions for continuous integration. Each service has a d
 
 ---
 
-## Microservices Overview
-
-| Service | Port | Database | Key Integrations |
-|---|---|---|---|
-| **api-gateway** | 8080 | — | Spring Cloud Gateway, JWT validation, route filtering |
-| **account-service** | 8081 | `account_db` | JWT, Stripe, PostgreSQL, Eureka |
-| **workspace-service** | 8082 | `workspace_db` | MinIO, Kafka, Fabric8 K8s client, Redis, PostgreSQL |
-| **intelligence-service** | 8083 | `intelligence_db` | Spring AI (OpenAI), SSE streaming, Kafka, PostgreSQL |
-| **config-service** | 8888 | — | Spring Cloud Config, Git backend |
-| **discovery-service** | 8761 | — | Netflix Eureka registry |
-| **common-lib** | — | — | Shared JWT filter, DTOs, enums, Feign interceptor |
-
----
-
-## API Endpoints
-
-All public endpoints are accessed through the API Gateway at `api.lovable.in`. Internal endpoints are used for inter-service communication.
-
-### Authentication (Account Service)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/auth/signup` | Register a new user account (free tier: 10 projects, 50K tokens) |
-| `POST` | `/auth/login` | Authenticate and receive JWT token |
-
-### Billing (Account Service)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/me/subscription` | Get current user's subscription details |
-| `POST` | `/api/payments/checkout` | Create a Stripe checkout session |
-| `POST` | `/api/payments/portal` | Open Stripe customer portal |
-| `POST` | `/webhooks/payment` | Stripe webhook handler |
-
-### Projects (Workspace Service)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/projects` | List all projects for the authenticated user |
-| `GET` | `/projects/{id}` | Get project details by ID |
-| `POST` | `/projects` | Create a new project |
-| `PATCH` | `/projects/{id}` | Update project title/description |
-| `DELETE` | `/projects/{id}` | Soft-delete a project |
-| `POST` | `/projects/{id}/deploy` | Deploy project to a preview pod (resumes existing pod if found) |
-| `GET` | `/projects/{id}/preview-status` | Get current preview deployment status (`CREATING`/`RUNNING`/`FAILED`/`TERMINATED`) |
-
-### Files (Workspace Service)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/projects/{projectId}/files` | Get the complete file tree for a project |
-| `GET` | `/projects/{projectId}/files/content` | Get content of a specific file (`?path=...`) |
-
-### Collaboration (Workspace Service)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/projects/{projectId}/members` | List all members of a project |
-| `POST` | `/projects/{projectId}/members` | Invite a new member by email |
-| `PATCH` | `/projects/{projectId}/members/{memberId}` | Update a member's role |
-| `DELETE` | `/projects/{projectId}/members/{memberId}` | Remove a member from the project |
-
-### Chat & AI (Intelligence Service)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/chat/stream` | Stream AI-generated code response (SSE) |
-| `GET` | `/chat/projects/{projectId}` | Get chat history for a project |
-
-### Internal Service-to-Service Endpoints
-
-| Method | Endpoint | Service | Description |
-|---|---|---|---|
-| `GET` | `/internal/v1/users/{id}` | Account | Fetch user by ID |
-| `GET` | `/internal/v1/users/by-email` | Account | Fetch user by email |
-| `GET` | `/internal/v1/billing/current-plan` | Account | Get current user's subscribed plan |
-| `GET` | `/internal/v1/projects/{projectId}/files/tree` | Workspace | Get file tree for AI context (requires Authorization header) |
-| `GET` | `/internal/v1/projects/{projectId}/files/content` | Workspace | Get file content for AI context (requires Authorization header) |
-| `GET` | `/internal/v1/projects/{projectId}/permissions/check` | Workspace | Check user's permission on a project |
-
----
-
 ## Getting Started
+
+This section covers the local prerequisites and environment configuration.
 
 ### Prerequisites
 
@@ -407,69 +315,6 @@ All public endpoints are accessed through the API Gateway at `api.lovable.in`. I
 - **Node.js 22+** with npm
 - **Docker & Docker Compose** — for local infrastructure services
 - **kubectl** — for Kubernetes interactions
-
-### Installation
-
-#### 1. Clone the Repository
-
-```bash
-git clone https://github.com/<your-username>/lovable.git
-cd lovable
-```
-
-#### 2. Configure Environment Variables
-
-Edit the `.env` file in the project root and adjust values for your environment.
-
-#### 3. Start Infrastructure Services
-
-```bash
-docker compose up -d
-```
-
-This starts PostgreSQL (port 9010), MinIO (ports 9000/9001), Redis (port 6379), and Kafka (port 29092).
-
-#### 4. Install Common Library
-
-```bash
-cd common-lib
-./mvnw clean install -DskipTests
-cd ..
-```
-
-#### 5. Start Microservices
-
-Start each service in order (each in a separate terminal):
-
-```bash
-# Discovery Service (must start first)
-cd discovery-service && ./mvnw spring-boot:run
-
-# Config Service
-cd config-service && ./mvnw spring-boot:run
-
-# Account Service
-cd account-service && ./mvnw spring-boot:run
-
-# Workspace Service
-cd workspace-service && ./mvnw spring-boot:run
-
-# Intelligence Service
-cd intelligence-service && ./mvnw spring-boot:run
-
-# API Gateway
-cd api-gateway && ./mvnw spring-boot:run
-```
-
-#### 6. Start the Frontend
-
-```bash
-cd lovable-frontend
-npm install
-npm run dev
-```
-
-The frontend will be available at `http://localhost:5173`.
 
 ### Environment Variables
 
@@ -495,116 +340,5 @@ The `.env` file configures all infrastructure and service connections:
 
 Services import their configuration from the Config Service, which pulls from the Git repository specified by `GITHUB_URI`.
 
----
 
-## Running the Project
 
-### Local Development
-
-**Infrastructure only:**
-
-```bash
-docker compose up -d
-```
-
-**All services with hot reload:**
-
-Start each microservice with `./mvnw spring-boot:run` in separate terminals. The frontend runs with Vite's dev server for HMR.
-
-**Build for production:**
-
-```bash
-# Backend services
-cd <service-name> && ./mvnw clean package -DskipTests
-
-# Frontend
-cd lovable-frontend && npm run build
-```
-
-### Kubernetes Deployment
-
-The project includes complete Kubernetes manifests in the `k8s/` directory for deployment to GKE.
-
-#### 1. Create Namespaces
-
-```bash
-kubectl apply -f k8s/infra/namespaces.yaml
-```
-
-#### 2. Deploy Core Infrastructure
-
-```bash
-# Network policies for core services
-kubectl apply -f k8s/infra/core-network-policies.yaml
-
-# Preview network policies
-kubectl apply -f k8s/infra/preview-network-policies.yaml
-```
-
-#### 3. Deploy Services
-
-```bash
-kubectl apply -f k8s/services/discovery-service.yaml
-kubectl apply -f k8s/services/config-service.yaml
-kubectl apply -f k8s/services/account-service.yaml
-kubectl apply -f k8s/services/workspace-service.yaml
-kubectl apply -f k8s/services/intelligence-service.yaml
-kubectl apply -f k8s/services/api-gateway.yaml
-kubectl apply -f k8s/services/frontend.yaml
-```
-
-#### 4. Configure Ingress
-
-```bash
-kubectl apply -f k8s/infra/ingress.yaml
-```
-
-The ingress routes traffic as follows:
-
-| Host | Backend Service |
-|---|---|
-| `lovable.in` / `www.lovable.in` | Frontend (port 80) |
-| `api.lovable.in` | API Gateway (port 80) |
-| `*.previews.lovable.in` | Preview proxy (port 80) |
-
-#### 5. Deploy Runner Pool
-
-```bash
-kubectl apply -f k8s/infra/runner-pool.yaml
-```
-
-#### 6. Verify Deployment
-
-```bash
-kubectl get pods -n lovable-core
-kubectl get ingress -n lovable-core
-```
-
-**CI/CD:** Pushing to `main` automatically triggers the corresponding GitHub Actions workflow, which builds the Docker image with Jib and pushes it to Docker Hub. Each workflow monitors its service's directory path plus `common-lib/**` for dependency changes.
-
----
-
-## Project Structure
-
-```
-lovable/
-├── account-service/          # User auth, JWT, Stripe billing, subscriptions
-├── api-gateway/              # Spring Cloud Gateway, JWT validation, routing
-├── common-lib/               # Shared library: JWT filter, DTOs, enums, exceptions
-├── config-service/           # Spring Cloud Config Server (Git-backed)
-├── discovery-service/        # Netflix Eureka service registry
-├── intelligence-service/     # AI chat, SSE streaming, LLM integration (OpenAI)
-├── workspace-service/        # Projects, files (MinIO), K8s previews, collaboration
-├── lovable-frontend/         # React 18 + TypeScript + Vite + Tailwind CSS
-├── k8s/                      # Kubernetes manifests
-│   ├── infra/                # Namespaces, ingress, network policies, runner pool
-│   ├── services/             # Deployment manifests for each microservice
-│   ├── proxy/                # Preview reverse proxy configuration
-│   ├── stateful/             # StatefulSet definitions
-├── docs/                     # Architecture diagrams, PDFs, and demo video
-├── .github/workflows/        # GitHub Actions CI/CD workflows
-├── docker-compose.yml        # Local infrastructure (PostgreSQL, MinIO, Redis, Kafka)
-└── .env                      # Environment variables
-```
-
----
